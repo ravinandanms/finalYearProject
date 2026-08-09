@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { generateDietPlan } from "../gemini";
+// Deprecated: using backend API instead
 
 export default function DietPlanner({ onBackHome }) {
   const [form, setForm] = useState({
@@ -21,15 +21,23 @@ export default function DietPlanner({ onBackHome }) {
     setIsLoading(true);
     setPlan("");
     try {
-      const response = await generateDietPlan({
-        age: form.age,
-        gender: form.gender,
-        activity: form.activity,
-        preference: form.diet,
-        goal,
-        allergies,
+      const prompt = `Can you create a diet plan for me?
+Age: ${form.age}
+Gender: ${form.gender}
+Activity: ${form.activity}
+Diet preference: ${form.diet}
+Goal: ${goal || "General wellness"}
+Allergies/avoid: ${allergies || "none"}`;
+      
+      const response = await fetch('http://localhost:5000/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: prompt, context: { page: 'diet-planner' } })
       });
-      setPlan(response);
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error);
+      
+      setPlan(data.reply);
     } catch (e) {
       setPlan("Sorry, I couldn't generate a plan. Please try again.");
     } finally {

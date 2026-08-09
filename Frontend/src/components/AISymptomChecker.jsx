@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { checkSymptoms } from "../gemini";
+// Deprecated: using backend API instead
 
 export default function AISymptomChecker({ onBackHome }) {
   const [messages, setMessages] = useState([
@@ -29,10 +29,17 @@ export default function AISymptomChecker({ onBackHome }) {
     setMessages((prev) => [...prev, typingMsg]);
 
     try {
-      const responseText = await checkSymptoms(userText);
+      const response = await fetch('http://localhost:5000/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userText, context: { page: 'ai-symptom-checker' } })
+      });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error);
+
       setMessages((prev) => {
         const next = [...prev];
-        next[typingIndex] = { sender: "bot", text: responseText };
+        next[typingIndex] = { sender: "bot", text: data.reply };
         return next;
       });
     } catch (err) {

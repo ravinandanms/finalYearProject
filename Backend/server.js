@@ -9,6 +9,7 @@ import connectToDatabase from "./Database/database.js";
 // Routes
 import authRoutes from "./Routes/authRoutes.js";
 import userRoutes from "./Routes/userRoutes.js";
+import aiRoutes from "./Routes/aiRoutes.js";
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -31,6 +32,7 @@ app.use(express.json());
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/ai", aiRoutes);
 
 // In-memory store for online users
 // Maps userId to socketId

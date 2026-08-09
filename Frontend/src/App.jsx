@@ -17,9 +17,11 @@ import VideoConsultation from "./components/VideoConsultation";
 import MedicalRecords from "./components/MedicalRecords";
 
 import DoctorDashboard from "./components/DoctorDashboard";
+import AIChatbot from "./components/AIChatbot";
 
 export default function App() {
   const [currentPage, setCurrentPage] = React.useState('home');
+  const [chatbotPrompt, setChatbotPrompt] = React.useState('');
   const { user } = useAuth();
 
   useEffect(() => {
@@ -49,8 +51,8 @@ export default function App() {
             <Hero />
             <div data-aos="fade-up"><About /></div>
             <div data-aos="fade-up"><Services 
-              onAiClick={() => setCurrentPage('ai-symptom-checker')} 
-              onDietClick={() => setCurrentPage('diet-planner')}
+              onAiClick={() => setChatbotPrompt('Check my symptoms')} 
+              onDietClick={() => setChatbotPrompt('Create a diet plan')}
               onPharmacyClick={() => setCurrentPage('pharmacy-locator')}
               onVideoConsultationClick={() => setCurrentPage('video-consultation')}
               onMedicalRecordsClick={() => setCurrentPage('medical-records')}
@@ -70,7 +72,14 @@ export default function App() {
       ) : user.role === 'doctor' ? (
         <DoctorDashboard />
       ) : (
-        renderCurrentPage()
+        <>
+          {renderCurrentPage()}
+          <AIChatbot 
+            context={{ page: currentPage, userRole: 'patient' }} 
+            initialPrompt={chatbotPrompt} 
+            onClosePrompt={() => setChatbotPrompt('')}
+          />
+        </>
       )}
     </div>
   );
