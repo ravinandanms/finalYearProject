@@ -15,24 +15,57 @@ export default function Login() {
   const [phone, setPhone] = useState("");
   const [gender, setGender] = useState("");
   const [age, setAge] = useState("");
+  const [role, setRole] = useState("patient"); // new role state
+  const [specialization, setSpecialization] = useState(""); // new specialization state
+  const [errorMsg, setErrorMsg] = useState("");
 
   // Forgot password
   const [otpPhone, setOtpPhone] = useState("");
   const [otp, setOtp] = useState("");
 
-  function handleSignIn(e) {
+  async function handleSignIn(e) {
     e.preventDefault();
-    if (!email.trim()) return;
-    // Interface only: authenticate by name/email for demo
-    const displayName = name.trim() || email.split("@")[0];
-    login({ name: displayName, email: email.trim() });
+    setErrorMsg("");
+    if (!email.trim() || !password) return;
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Login failed');
+      
+      localStorage.setItem('teleseva_token', data.token);
+      login(data.user);
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
   }
 
-  function handleSignUp(e) {
+  async function handleSignUp(e) {
     e.preventDefault();
-    // Interface only: on sign up, just log them in
-    const displayName = name.trim() || email.split("@")[0] || "User";
-    login({ name: displayName, email: email.trim() || "user@example.com" });
+    setErrorMsg("");
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name, 
+          email, 
+          password, 
+          role,
+          specialization: role === 'doctor' ? specialization : undefined 
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Registration failed');
+      
+      localStorage.setItem('teleseva_token', data.token);
+      login(data.user);
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
   }
 
   return (
@@ -90,6 +123,7 @@ export default function Login() {
 
         {activeTab === "signin" ? (
           <form onSubmit={handleSignIn} className="space-y-4">
+            {errorMsg && <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm">{errorMsg}</div>}
             <div>
               <label className="block text-sm text-slate-600 mb-1">{t('auth.email')}</label>
               <input
@@ -123,6 +157,7 @@ export default function Login() {
           </form>
         ) : (
           <form onSubmit={handleSignUp} className="space-y-4">
+            {errorMsg && <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm">{errorMsg}</div>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-slate-600 mb-1">{t('auth.name')}</label>
@@ -168,6 +203,31 @@ export default function Login() {
                   placeholder="Your age"
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-slate-600 mb-1">Role</label>
+                <select
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                >
+                  <option value="patient">Patient</option>
+                  <option value="doctor">Doctor</option>
+                </select>
+              </div>
+              {role === 'doctor' && (
+                <div>
+                  <label className="block text-sm text-slate-600 mb-1">Specialization</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    value={specialization}
+                    onChange={(e) => setSpecialization(e.target.value)}
+                    placeholder="e.g. Cardiologist"
+                  />
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>

@@ -16,6 +16,8 @@ import Login from "./components/Login";
 import VideoConsultation from "./components/VideoConsultation";
 import MedicalRecords from "./components/MedicalRecords";
 
+import DoctorDashboard from "./components/DoctorDashboard";
+
 export default function App() {
   const [currentPage, setCurrentPage] = React.useState('home');
   const { user } = useAuth();
@@ -65,6 +67,8 @@ export default function App() {
     <div className="min-h-screen bg-gray-50 text-slate-800 scroll-smooth">
       {!user ? (
         <Login />
+      ) : user.role === 'doctor' ? (
+        <DoctorDashboard />
       ) : (
         renderCurrentPage()
       )}
