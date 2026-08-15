@@ -7,7 +7,7 @@ dotenv.config();
 const router = express.Router();
 
 // Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyCZdWdPqQ-tSlgMMcd4PC8bpUOCLhKY7_s"); 
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ); 
 // Fallback to the old key for development if env is not set correctly yet, though it should be in .env
 
 // In-memory conversation store for the first implementation
@@ -26,7 +26,8 @@ Your role is to help patients with:
 - "Video call not working" -> Tell them to check their camera/mic permissions and ensure the doctor is online.
 
 Keep responses concise, easy to scan, use short paragraphs or bullets.
-Determine the user's intent automatically from their prompt. Do NOT use markdown code blocks unless necessary.`;
+Determine the user's intent automatically from their prompt. Do NOT use markdown code blocks unless necessary.
+respond to the language the user interacts with you `;
 
 router.post('/chat', async (req, res) => {
     try {
@@ -37,7 +38,7 @@ router.post('/chat', async (req, res) => {
         }
 
         const model = genAI.getGenerativeModel({ 
-            model: "gemini-2.5-flash",
+            model: "gemini-3.5-flash",
             systemInstruction: systemInstruction 
         });
 
