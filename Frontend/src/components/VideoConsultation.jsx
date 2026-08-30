@@ -17,6 +17,7 @@ export default function VideoConsultation({ onBackHome }) {
   const [callEnded, setCallEnded] = useState(false);
   
   const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   
@@ -83,6 +84,12 @@ export default function VideoConsultation({ onBackHome }) {
     }
   }, [localStream, isCallActive]);
 
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream, callAccepted]);
+
   const startVideo = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -113,9 +120,7 @@ export default function VideoConsultation({ onBackHome }) {
     });
 
     peer.on('stream', (currentStream) => {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = currentStream;
-      }
+      setRemoteStream(currentStream);
     });
 
     connectionRef.current = peer;
@@ -140,6 +145,7 @@ export default function VideoConsultation({ onBackHome }) {
     setIsCallActive(false);
     setSelectedDoctor(null);
     setCallAccepted(false);
+    setRemoteStream(null);
     if (connectionRef.current) {
       connectionRef.current.destroy();
     }

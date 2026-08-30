@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useI18n } from "../context/I18nContext";
+import { useNavigate } from "react-router-dom";
 import telesevaLogo from "../assets/telesevaLogo.jpg";
 export default function Login() {
   const { login } = useAuth();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("signin"); // 'signin' | 'signup'
   const [showForgot, setShowForgot] = useState(false);
 
@@ -23,6 +25,12 @@ export default function Login() {
   const [otpPhone, setOtpPhone] = useState("");
   const [otp, setOtp] = useState("");
 
+  const routeUser = (userRole) => {
+    if (userRole === 'admin') navigate('/admin');
+    else if (userRole === 'doctor') navigate('/doctor');
+    else navigate('/');
+  };
+
   async function handleSignIn(e) {
     e.preventDefault();
     setErrorMsg("");
@@ -38,6 +46,7 @@ export default function Login() {
       
       localStorage.setItem('teleseva_token', data.token);
       login(data.user);
+      routeUser(data.user.role);
     } catch (err) {
       setErrorMsg(err.message);
     }
@@ -63,6 +72,7 @@ export default function Login() {
       
       localStorage.setItem('teleseva_token', data.token);
       login(data.user);
+      routeUser(data.user.role);
     } catch (err) {
       setErrorMsg(err.message);
     }

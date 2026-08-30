@@ -19,8 +19,13 @@ const userSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['doctor', 'patient'],
+        enum: ['doctor', 'patient', 'admin'],
         required: true
+    },
+    status: {
+        type: String,
+        enum: ['active', 'pending', 'suspended', 'rejected'],
+        default: 'active'
     },
     specialization: {
         type: String,
@@ -28,6 +33,21 @@ const userSchema = new mongoose.Schema({
         required: function() {
             return this.role === 'doctor';
         }
+    },
+    // Patient Profile Fields
+    dateOfBirth: String,
+    gender: String,
+    phone: String,
+    address: String,
+    profilePicture: String,
+    
+    // Patient Medical Information
+    medicalInformation: {
+        bloodGroup: String,
+        allergies: String,
+        existingConditions: String,
+        currentMedications: String,
+        emergencyContact: String
     }
 }, { timestamps: true });
 

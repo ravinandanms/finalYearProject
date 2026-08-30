@@ -10,6 +10,11 @@ import connectToDatabase from "./Database/database.js";
 import authRoutes from "./Routes/authRoutes.js";
 import userRoutes from "./Routes/userRoutes.js";
 import aiRoutes from "./Routes/aiRoutes.js";
+import adminRoutes from "./Routes/adminRoutes.js";
+import patientRoutes from "./Routes/patientRoutes.js";
+import doctorRoutes from "./Routes/doctorRoutes.js";
+import { seedAdmin } from "./Database/seedAdmin.js";
+import path from "path";
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -28,11 +33,15 @@ const io = new Server(httpServer, {
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(process.cwd(), 'public/uploads')));
 
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/patients", patientRoutes);
+app.use("/api/doctors", doctorRoutes);
 
 // In-memory store for online users
 // Maps userId to socketId
@@ -115,4 +124,6 @@ httpServer.listen(PORT, () => {
 });
 
 // Connecting to database 
-connectToDatabase();
+connectToDatabase().then(() => {
+    seedAdmin();
+});

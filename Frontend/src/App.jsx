@@ -1,7 +1,9 @@
 import React, { useEffect } from "react";
 import AOS from "aos";
 import "aos/dist/aos.css";
+import { Routes, Route, useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import About from "./components/About";
@@ -14,14 +16,43 @@ import DietPlanner from "./components/DietPlanner";
 import PharmacyLocator from "./components/PharmacyLocator";
 import Login from "./components/Login";
 import VideoConsultation from "./components/VideoConsultation";
-import MedicalRecords from "./components/MedicalRecords";
+import PatientProfile from "./components/PatientProfile";
 
 import DoctorDashboard from "./components/DoctorDashboard";
+import AdminDashboard from "./components/AdminDashboard";
 import AIChatbot from "./components/AIChatbot";
+import ProtectedRoute from "./components/ProtectedRoute";
+
+function PatientHome() {
+  const navigate = useNavigate();
+  const [chatbotPrompt, setChatbotPrompt] = React.useState('');
+  return (
+    <>
+      <Navbar />
+      <Hero />
+      <div data-aos="fade-up"><About /></div>
+      <div data-aos="fade-up">
+        <Services 
+          onAiClick={() => setChatbotPrompt('Check my symptoms')} 
+          onDietClick={() => setChatbotPrompt('Create a diet plan')}
+          onPharmacyClick={() => navigate('/pharmacy-locator')}
+          onVideoConsultationClick={() => navigate('/video-consultation')}
+          onMedicalRecordsClick={() => navigate('/profile')}
+        />
+      </div>
+      <div data-aos="fade-up"><Doctors /></div>
+      <div data-aos="fade-up"><CTA /></div>
+      <div data-aos="fade-up"><Footer /></div>
+      <AIChatbot 
+        context={{ page: 'home', userRole: 'patient' }} 
+        initialPrompt={chatbotPrompt} 
+        onClosePrompt={() => setChatbotPrompt('')}
+      />
+    </>
+  );
+}
 
 export default function App() {
-  const [currentPage, setCurrentPage] = React.useState('home');
-  const [chatbotPrompt, setChatbotPrompt] = React.useState('');
   const { user } = useAuth();
 
   useEffect(() => {
@@ -32,55 +63,57 @@ export default function App() {
     });
   }, []);
 
-  const renderCurrentPage = () => {
-    switch (currentPage) {
-      case 'ai-symptom-checker':
-        return <AISymptomChecker onBackHome={() => setCurrentPage('home')} />;
-      case 'diet-planner':
-        return <DietPlanner onBackHome={() => setCurrentPage('home')} />;
-      case 'pharmacy-locator':
-        return <PharmacyLocator onBackHome={() => setCurrentPage('home')} />;
-      case 'video-consultation':
-        return <VideoConsultation onBackHome={() => setCurrentPage('home')} />;
-      case 'medical-records':
-        return <MedicalRecords onBackHome={() => setCurrentPage('home')} />;
-      default:
-        return (
-          <>
-            <Navbar />
-            <Hero />
-            <div data-aos="fade-up"><About /></div>
-            <div data-aos="fade-up"><Services 
-              onAiClick={() => setChatbotPrompt('Check my symptoms')} 
-              onDietClick={() => setChatbotPrompt('Create a diet plan')}
-              onPharmacyClick={() => setCurrentPage('pharmacy-locator')}
-              onVideoConsultationClick={() => setCurrentPage('video-consultation')}
-              onMedicalRecordsClick={() => setCurrentPage('medical-records')}
-            /></div>
-            <div data-aos="fade-up"><Doctors /></div>
-            <div data-aos="fade-up"><CTA /></div>
-            <div data-aos="fade-up"><Footer /></div>
-          </>
-        );
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 text-slate-800 scroll-smooth">
-      {!user ? (
-        <Login />
-      ) : user.role === 'doctor' ? (
-        <DoctorDashboard />
-      ) : (
-        <>
-          {renderCurrentPage()}
-          <AIChatbot 
-            context={{ page: currentPage, userRole: 'patient' }} 
-            initialPrompt={chatbotPrompt} 
-            onClosePrompt={() => setChatbotPrompt('')}
-          />
-        </>
-      )}
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        
+        {/* Admin Routes */}
+        <Route path="/admin/*" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminDashboard />
+          </ProtectedRoute>
+        } />
+        
+        {/* Doctor Routes */}
+        <Route path="/doctor/*" element={
+          <ProtectedRoute allowedRoles={['doctor']}>
+            <DoctorDashboard />
+          </ProtectedRoute>
+        } />
+        
+        {/* Patient Routes */}
+        <Route path="/" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <PatientHome />
+          </ProtectedRoute>
+        } />
+        <Route path="/ai-symptom-checker" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <AISymptomChecker onBackHome={() => window.history.back()} />
+          </ProtectedRoute>
+        } />
+        <Route path="/diet-planner" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <DietPlanner onBackHome={() => window.history.back()} />
+          </ProtectedRoute>
+        } />
+        <Route path="/pharmacy-locator" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <PharmacyLocator onBackHome={() => window.history.back()} />
+          </ProtectedRoute>
+        } />
+        <Route path="/video-consultation" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <VideoConsultation onBackHome={() => window.history.back()} />
+          </ProtectedRoute>
+        } />
+        <Route path="/profile" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <PatientProfile onBackHome={() => window.history.back()} />
+          </ProtectedRoute>
+        } />
+      </Routes>
     </div>
   );
 }

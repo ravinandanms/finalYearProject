@@ -6,6 +6,10 @@ export const register = async (req, res) => {
     try {
         const { name, email, password, role, specialization } = req.body;
 
+        if (role === 'admin') {
+            return res.status(403).json({ message: "Cannot register as admin" });
+        }
+
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({ message: "User already exists" });
@@ -18,6 +22,7 @@ export const register = async (req, res) => {
             email,
             password: hashedPassword,
             role,
+            status: role === 'doctor' ? 'pending' : 'active',
             specialization: role === 'doctor' ? specialization : undefined
         });
 
@@ -42,6 +47,10 @@ export const login = async (req, res) => {
         const user = await User.findOne({ email });
         if (!user) {
             return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.status === 'suspended' || user.status === 'rejected') {
+            return res.status(403).json({ message: `Account is ${user.status}. Please contact support.` });
         }
 
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
