@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { io } from "socket.io-client";
 
 const AuthContext = createContext(null);
@@ -6,6 +6,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [socket, setSocket] = useState(null);
+  const socketRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -13,26 +14,49 @@ export function AuthProvider({ children }) {
       if (stored) {
         const parsedUser = JSON.parse(stored);
         setUser(parsedUser);
-        initializeSocket(parsedUser);
       }
     } catch (_) {
       // ignore
     }
   }, []);
 
-  const initializeSocket = (userData) => {
-    if (socket) return; // Prevent multiple connections
-    // Assuming backend runs on 3000 (from .env)
-    const newSocket = io("http://localhost:3000"); 
-    
-    newSocket.on("connect", () => {
-      console.log("Connected to Socket.IO server");
-      // Send the userId and role to register online status
-      newSocket.emit("join", { userId: userData._id || userData.email, role: userData.role });
-    });
+  // Manage socket connection lifecycle
+  useEffect(() => {
+    if (!socketRef.current) {
+      const newSocket = io("http://localhost:3000", {
+        transports: ["websocket", "polling"],
+        reconnection: true,
+        reconnectionAttempts: 20,
+        reconnectionDelay: 1000,
+      });
+      socketRef.current = newSocket;
+      setSocket(newSocket);
+    }
 
-    setSocket(newSocket);
-  };
+    const currentSocket = socketRef.current;
+
+    const handleJoin = () => {
+      if (user) {
+        const uid = String(user._id || user.id || user.email);
+        console.log(`[Socket.IO] Emitting join event for user: ${uid} (Role: ${user.role})`);
+        currentSocket.emit("join", { 
+          userId: uid, 
+          role: user.role,
+          name: user.name || 'User'
+        });
+      }
+    };
+
+    currentSocket.on("connect", handleJoin);
+
+    if (currentSocket.connected && user) {
+      handleJoin();
+    }
+
+    return () => {
+      currentSocket.off("connect", handleJoin);
+    };
+  }, [user]);
 
   function login(userData) {
     setUser(userData);
@@ -41,19 +65,19 @@ export function AuthProvider({ children }) {
     } catch (_) {
       // ignore
     }
-    initializeSocket(userData);
   }
 
   function logout() {
     setUser(null);
     try {
       localStorage.removeItem("teleseva_user");
-      localStorage.removeItem("teleseva_token"); // if we store token separately
+      localStorage.removeItem("teleseva_token");
     } catch (_) {
       // ignore
     }
-    if (socket) {
-      socket.disconnect();
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
       setSocket(null);
     }
   }
@@ -68,3 +92,4 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
   return ctx;
 }
+

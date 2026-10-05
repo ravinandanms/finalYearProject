@@ -13,6 +13,7 @@ import aiRoutes from "./Routes/aiRoutes.js";
 import adminRoutes from "./Routes/adminRoutes.js";
 import patientRoutes from "./Routes/patientRoutes.js";
 import doctorRoutes from "./Routes/doctorRoutes.js";
+import doctorHospitalRoutes from "./Routes/doctorHospitalRoutes.js";
 import { seedAdmin } from "./Database/seedAdmin.js";
 import path from "path";
 
@@ -42,18 +43,21 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/patients", patientRoutes);
 app.use("/api/doctors", doctorRoutes);
+app.use("/api/doctors-hospitals", doctorHospitalRoutes);
 
 // In-memory store for online users
-// Maps userId to socketId
+// Maps userId string to socket details
 const onlineUsers = new Map();
 
 io.on("connection", (socket) => {
     console.log(`User connected: ${socket.id}`);
 
     // When a user logs in / connects, they send their userId and role
-    socket.on("join", ({ userId, role }) => {
-        onlineUsers.set(userId, { socketId: socket.id, role });
-        console.log(`User ${userId} joined as ${role}`);
+    socket.on("join", ({ userId, role, name }) => {
+        if (!userId) return;
+        const uid = String(userId);
+        onlineUsers.set(uid, { socketId: socket.id, role, name: name || 'User', userId: uid });
+        console.log(`User ${uid} (${name || 'User'}) joined as role: ${role}`);
         
         // Broadcast updated online doctors to everyone
         broadcastOnlineDoctors();
@@ -63,7 +67,7 @@ io.on("connection", (socket) => {
         const doctors = [];
         for (let [userId, details] of onlineUsers.entries()) {
             if (details.role === 'doctor') {
-                doctors.push(userId);
+                doctors.push(String(userId));
             }
         }
         socket.emit("online_doctors_list", doctors);
@@ -71,25 +75,49 @@ io.on("connection", (socket) => {
 
     // Patient requests a video call to a doctor
     socket.on("call_user", ({ userToCall, signalData, from, name }) => {
-        const doctorSocket = onlineUsers.get(userToCall)?.socketId;
-        if (doctorSocket) {
-            io.to(doctorSocket).emit("incoming_call", { signal: signalData, from, name });
+        const targetId = String(userToCall);
+        const doctorData = onlineUsers.get(targetId);
+        console.log(`Call requested from ${from} (${name}) to doctor ${targetId}. Found:`, !!doctorData);
+        
+        if (doctorData?.socketId) {
+            io.to(doctorData.socketId).emit("incoming_call", { 
+                signal: signalData, 
+                from: String(from), 
+                name: name || 'Patient' 
+            });
+        } else {
+            socket.emit("call_failed", { message: "Doctor is currently offline or unreachable." });
         }
     });
 
     // Doctor answers the call
     socket.on("answer_call", (data) => {
-        const callerSocket = onlineUsers.get(data.to)?.socketId;
-        if (callerSocket) {
-            io.to(callerSocket).emit("call_accepted", data.signal);
+        const callerId = String(data.to);
+        const callerData = onlineUsers.get(callerId);
+        console.log(`Doctor answered call for caller ${callerId}. Found:`, !!callerData);
+        
+        if (callerData?.socketId) {
+            io.to(callerData.socketId).emit("call_accepted", data.signal);
         }
     });
 
     // Doctor rejects the call
     socket.on("reject_call", (data) => {
-        const callerSocket = onlineUsers.get(data.to)?.socketId;
-        if (callerSocket) {
-            io.to(callerSocket).emit("call_rejected");
+        const callerId = String(data.to);
+        const callerData = onlineUsers.get(callerId);
+        if (callerData?.socketId) {
+            io.to(callerData.socketId).emit("call_rejected");
+        }
+    });
+
+    // End call signal
+    socket.on("end_call", (data) => {
+        const targetId = data?.to ? String(data.to) : null;
+        if (targetId) {
+            const targetData = onlineUsers.get(targetId);
+            if (targetData?.socketId) {
+                io.to(targetData.socketId).emit("call_ended");
+            }
         }
     });
 
@@ -111,12 +139,13 @@ io.on("connection", (socket) => {
         const doctors = [];
         for (let [userId, details] of onlineUsers.entries()) {
             if (details.role === 'doctor') {
-                doctors.push(userId); // Or send more details if needed
+                doctors.push(String(userId));
             }
         }
         io.emit("online_doctors_list", doctors);
     }
 });
+
 
 // Start the server
 httpServer.listen(PORT, () => {

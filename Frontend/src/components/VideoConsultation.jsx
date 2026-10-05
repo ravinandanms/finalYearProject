@@ -11,6 +11,7 @@ export default function VideoConsultation({ onBackHome }) {
   const [doctors, setDoctors] = useState([]);
   const [onlineDoctorIds, setOnlineDoctorIds] = useState([]);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
+  const [callStatusMessage, setCallStatusMessage] = useState('');
   
   const [isCallActive, setIsCallActive] = useState(false);
   const [callAccepted, setCallAccepted] = useState(false);
@@ -25,13 +26,13 @@ export default function VideoConsultation({ onBackHome }) {
   const remoteVideoRef = useRef(null);
   const connectionRef = useRef(null);
 
+  // Fetch doctors list
   useEffect(() => {
-    // Fetch all doctors from API
     const fetchDoctors = async () => {
       try {
         const token = localStorage.getItem('teleseva_token');
         const res = await axios.get('/api/users/doctors', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         setDoctors(res.data);
       } catch (err) {
@@ -41,34 +42,61 @@ export default function VideoConsultation({ onBackHome }) {
     fetchDoctors();
   }, []);
 
+  // Socket online status and call events
   useEffect(() => {
-    if (socket) {
-      socket.on('online_doctors_list', (doctorsList) => {
-        setOnlineDoctorIds(doctorsList);
-      });
-      
-      socket.on('call_accepted', (signal) => {
-        setCallAccepted(true);
-        if (connectionRef.current) {
-          connectionRef.current.signal(signal);
-        }
-      });
+    if (!socket) return;
 
-      socket.on('call_rejected', () => {
-        alert("The doctor rejected the call or is busy.");
-        handleEndCall();
-      });
-      
-      // Request the current online doctors in case we missed the broadcast
+    const handleOnlineDoctors = (doctorsList) => {
+      if (Array.isArray(doctorsList)) {
+        setOnlineDoctorIds(doctorsList.map(String));
+      }
+    };
+
+    const handleCallAccepted = (signal) => {
+      console.log("Doctor accepted the call! Connecting peer...");
+      setCallAccepted(true);
+      setCallStatusMessage("Connected to Doctor");
+      if (connectionRef.current) {
+        connectionRef.current.signal(signal);
+      }
+    };
+
+    const handleCallRejected = () => {
+      alert("The doctor is currently busy or declined the call.");
+      handleEndCall();
+    };
+
+    const handleCallFailed = (data) => {
+      alert(data?.message || "Doctor is currently offline or unreachable.");
+      handleEndCall();
+    };
+
+    const handleCallEnded = () => {
+      alert("The doctor has ended the consultation.");
+      handleEndCall();
+    };
+
+    socket.on('online_doctors_list', handleOnlineDoctors);
+    socket.on('call_accepted', handleCallAccepted);
+    socket.on('call_rejected', handleCallRejected);
+    socket.on('call_failed', handleCallFailed);
+    socket.on('call_ended', handleCallEnded);
+
+    // Initial fetch of online doctors
+    socket.emit('get_online_doctors');
+
+    // Interval polling for status sync
+    const interval = setInterval(() => {
       socket.emit('get_online_doctors');
-    }
+    }, 3000);
 
     return () => {
-      if (socket) {
-        socket.off('online_doctors_list');
-        socket.off('call_accepted');
-        socket.off('call_rejected');
-      }
+      socket.off('online_doctors_list', handleOnlineDoctors);
+      socket.off('call_accepted', handleCallAccepted);
+      socket.off('call_rejected', handleCallRejected);
+      socket.off('call_failed', handleCallFailed);
+      socket.off('call_ended', handleCallEnded);
+      clearInterval(interval);
     };
   }, [socket]);
 
@@ -92,35 +120,58 @@ export default function VideoConsultation({ onBackHome }) {
 
   const startVideo = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setCallStatusMessage("Accessing camera and microphone...");
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
+        audio: true 
+      });
       setLocalStream(stream);
+      setCallStatusMessage(`Ringing Dr. ${selectedDoctor?.name || 'Doctor'}...`);
       callDoctor(selectedDoctor, stream);
     } catch (err) {
       console.error("Error accessing media devices:", err);
-      alert("Could not access camera/microphone. Please check permissions.");
+      alert("Could not access camera/microphone. Please ensure permissions are granted.");
       setIsCallActive(false);
       setSelectedDoctor(null);
     }
   };
 
   const callDoctor = (doctor, stream) => {
+    if (!socket || !doctor) return;
+
+    const callerId = String(user?._id || user?.id || user?.email || 'patient_' + Math.random().toString(36).substring(7));
+    const callerName = user?.name || 'Patient';
+
     const peer = new Peer({
       initiator: true,
       trickle: false,
-      stream: stream
+      stream: stream,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+        ]
+      }
     });
 
     peer.on('signal', (data) => {
+      console.log("Emitting call_user to doctor:", doctor._id);
       socket.emit('call_user', {
-        userToCall: doctor._id,
+        userToCall: String(doctor._id || doctor.id),
         signalData: data,
-        from: user._id || user.email, // Adjust based on your identifier
-        name: user.name
+        from: callerId,
+        name: callerName
       });
     });
 
     peer.on('stream', (currentStream) => {
+      console.log("Received remote stream from doctor!");
       setRemoteStream(currentStream);
+    });
+
+    peer.on('error', (err) => {
+      console.error("Peer connection error:", err);
     });
 
     connectionRef.current = peer;
@@ -141,19 +192,25 @@ export default function VideoConsultation({ onBackHome }) {
   };
 
   const handleEndCall = () => {
+    if (socket && selectedDoctor) {
+      socket.emit('end_call', { to: String(selectedDoctor._id || selectedDoctor.id) });
+    }
     setCallEnded(true);
     setIsCallActive(false);
     setSelectedDoctor(null);
     setCallAccepted(false);
     setRemoteStream(null);
+    setCallStatusMessage('');
     if (connectionRef.current) {
       connectionRef.current.destroy();
+      connectionRef.current = null;
     }
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
       setLocalStream(null);
     }
   };
+
 
   if (isCallActive && selectedDoctor) {
     return (
@@ -181,11 +238,12 @@ export default function VideoConsultation({ onBackHome }) {
               {callAccepted ? (
                 <video playsInline autoPlay ref={remoteVideoRef} className="w-full h-full object-cover" />
               ) : (
-                <div className="text-center opacity-50">
-                  <div className="w-32 h-32 rounded-full mx-auto mb-4 bg-slate-700 flex items-center justify-center border border-slate-500">
-                    <span className="text-5xl font-bold text-white">{selectedDoctor.name.charAt(0)}</span>
+                <div className="text-center">
+                  <div className="w-28 h-28 rounded-full mx-auto mb-4 bg-teal-600/30 border-2 border-teal-400 flex items-center justify-center animate-pulse">
+                    <span className="text-4xl font-bold text-teal-300">{selectedDoctor.name.charAt(0)}</span>
                   </div>
-                  <p className="text-white text-xl">Calling {selectedDoctor.name}...</p>
+                  <p className="text-white text-xl font-semibold mb-1">Calling {selectedDoctor.name}...</p>
+                  <p className="text-teal-400 text-sm font-medium animate-pulse">{callStatusMessage || "Waiting for doctor to answer..."}</p>
                 </div>
               )}
            </div>
@@ -246,14 +304,15 @@ export default function VideoConsultation({ onBackHome }) {
           >
             ← Back
           </button>
-          <h1 className="text-3xl font-bold text-slate-800">Video Consultation</h1>
+          <div>
+            <h1 className="text-3xl font-bold text-slate-800">Video Consultation</h1>
+            <p className="text-sm text-slate-500">Connect instantly with online doctors via secure live video call</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {doctors.map((doctor) => {
-            // Check if doctor is in online list
-            // We use _id because that's what the backend broadcasts
-            const isOnline = onlineDoctorIds.includes(doctor._id);
+            const isOnline = onlineDoctorIds.some(id => String(id) === String(doctor._id || doctor.id));
 
             return (
               <div key={doctor._id} className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-100 group">

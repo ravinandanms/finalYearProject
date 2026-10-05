@@ -14,6 +14,7 @@ import Footer from "./components/Footer";
 import AISymptomChecker from "./components/AISymptomChecker";
 import DietPlanner from "./components/DietPlanner";
 import PharmacyLocator from "./components/PharmacyLocator";
+import DoctorHospitalFinder from "./components/DoctorHospitalFinder";
 import Login from "./components/Login";
 import VideoConsultation from "./components/VideoConsultation";
 import PatientProfile from "./components/PatientProfile";
@@ -33,8 +34,9 @@ function PatientHome() {
       <div data-aos="fade-up"><About /></div>
       <div data-aos="fade-up">
         <Services 
-          onAiClick={() => setChatbotPrompt('Check my symptoms')} 
-          onDietClick={() => setChatbotPrompt('Create a diet plan')}
+          onDoctorFinderClick={() => navigate('/doctor-finder')}
+          onAiClick={() => navigate('/ai-symptom-checker')} 
+          onDietClick={() => navigate('/diet-planner')}
           onPharmacyClick={() => navigate('/pharmacy-locator')}
           onVideoConsultationClick={() => navigate('/video-consultation')}
           onMedicalRecordsClick={() => navigate('/profile')}
@@ -86,6 +88,11 @@ export default function App() {
         <Route path="/" element={
           <ProtectedRoute allowedRoles={['patient']}>
             <PatientHome />
+          </ProtectedRoute>
+        } />
+        <Route path="/doctor-finder" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <DoctorHospitalFinder onBackHome={() => window.history.back()} />
           </ProtectedRoute>
         } />
         <Route path="/ai-symptom-checker" element={
