@@ -48,28 +48,52 @@ export const getAppointments = async (req, res) => {
 export const createConsultationRecord = async (req, res) => {
     try {
         const { id } = req.params; // doctorId
-        const { patientId, diagnosis, prescription, consultationNotes, reason } = req.body;
+        const { 
+            patientId, 
+            diagnosis, 
+            prescription, 
+            prescribedMedicines,
+            consultationNotes, 
+            testsAdvised,
+            consultationFee = 500,
+            reason 
+        } = req.body;
         
-        if (req.userData.userId !== id) {
+        if (req.userData.userId !== id && req.userData.role !== 'admin') {
             return res.status(403).json({ message: "Forbidden" });
         }
+
+        // Format structured medicines if passed
+        const formattedMedicines = Array.isArray(prescribedMedicines) && prescribedMedicines.length > 0 
+            ? prescribedMedicines 
+            : prescription 
+                ? [{ name: prescription, dosage: "As directed", frequency: "1-0-1", duration: "5 days", instructions: "After meals" }]
+                : [];
         
         const newAppointment = new Appointment({
-            patientId,
+            patientId: patientId || req.userData.userId,
             doctorId: id,
-            date: new Date(), // Storing current time as consultation time for simplicity
-            time: new Date().toLocaleTimeString(),
+            date: new Date(),
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             status: 'Completed',
-            reason,
+            reason: reason || diagnosis || 'Live Video Consultation',
             diagnosis,
-            prescription,
-            consultationNotes
+            prescription: prescription || (formattedMedicines.map(m => `${m.name} (${m.dosage}, ${m.frequency})`).join(', ')),
+            prescribedMedicines: formattedMedicines,
+            consultationNotes,
+            testsAdvised,
+            consultationFee: Number(consultationFee) || 500,
+            paymentStatus: 'Pending'
         });
         
         await newAppointment.save();
-        
-        res.status(201).json(newAppointment);
+        const populated = await Appointment.findById(newAppointment._id)
+            .populate('doctorId', 'name email specialization')
+            .populate('patientId', 'name email phone');
+            
+        res.status(201).json(populated || newAppointment);
     } catch (error) {
         res.status(500).json({ message: "Error creating consultation record", error: error.message });
     }
-}
+};
+

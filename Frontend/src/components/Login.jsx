@@ -216,19 +216,19 @@ export default function Login() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-slate-600 mb-1">Role</label>
+                <label className="block text-sm text-slate-600 mb-1">{t('auth.role')}</label>
                 <select
                   className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
                 >
-                  <option value="patient">Patient</option>
-                  <option value="doctor">Doctor</option>
+                  <option value="patient">{t('auth.role.patient')}</option>
+                  <option value="doctor">{t('auth.role.doctor')}</option>
                 </select>
               </div>
               {role === 'doctor' && (
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Specialization</label>
+                  <label className="block text-sm text-slate-600 mb-1">{t('auth.specialization')}</label>
                   <input
                     type="text"
                     className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"

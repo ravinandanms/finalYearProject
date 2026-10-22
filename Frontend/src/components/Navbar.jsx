@@ -27,111 +27,133 @@ export default function Navbar(){
               <img 
                 src={telesevaLogo} 
                 alt="Teleseva Logo" 
-                className="w-10 h-10 object-contain"
+                className="w-10 h-10 object-contain rounded-lg shadow-xs"
               />
               <div>
-                <div className="font-bold text-xl bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-                  Teleseva
+                <div className="font-bold text-xl bg-gradient-to-r from-green-600 to-teal-600 bg-clip-text text-transparent">
+                  {t('brand.name')}
                 </div>
-                <div className="text-xs text-slate-400">{t('brand.tag')}</div>
+                <div className="text-[11px] text-slate-400 font-medium">{t('brand.tag')}</div>
               </div>
             </div>
           </div>
-          <nav className="hidden md:flex gap-6 ml-6 text-sm text-slate-600">
+          <nav className="hidden md:flex gap-6 ml-6 text-sm font-medium text-slate-600">
             {["home", "about", "services", "doctors", "contact"].map((id) => (
               <a
                 key={id}
                 onClick={() => scrollToSection(id)}
-                className="hover:text-slate-900 cursor-pointer"
+                className="hover:text-teal-600 transition-colors cursor-pointer"
               >
                 {t(`nav.${id}`)}
               </a>
             ))}
           </nav>
-          <div className="hidden md:flex items-center gap-3">
-            <select
-              className="border rounded-md px-2 py-1 text-sm text-slate-700"
-              value={lang}
-              onChange={(e) => setLang(e.target.value)}
-            >
-              <option value="en">English</option>
-              <option value="hi">हिन्दी</option>
-              <option value="pa">ਪੰਜਾਬੀ</option>
-            </select>
-          </div>
-          <div className="hidden md:flex items-center gap-3">
+          
+          <div className="flex items-center gap-3">
+            {/* Language Selector: English & Kannada */}
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200">
+              <span className="text-xs text-slate-500 pl-1.5 font-medium">🌐</span>
+              <select
+                aria-label="Change Language"
+                className="bg-transparent text-xs sm:text-sm font-semibold text-slate-700 focus:outline-none cursor-pointer pr-2"
+                value={lang}
+                onChange={(e) => setLang(e.target.value)}
+              >
+                <option value="en">English</option>
+                <option value="kn">ಕನ್ನಡ (Kannada)</option>
+              </select>
+            </div>
+
             {user && (
               <div className="relative">
                 <button
-                  className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center"
+                  className="w-9 h-9 rounded-full bg-teal-100 text-teal-800 border border-teal-300 flex items-center justify-center font-bold shadow-xs transition-transform hover:scale-105"
                   onClick={() => setProfileOpen((s) => !s)}
+                  title={user.name}
                 >
-                  <span className="text-sm font-semibold">
+                  <span className="text-sm font-bold">
                     {user.name?.charAt(0)?.toUpperCase() || 'U'}
                   </span>
                 </button>
                 {profileOpen && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white border rounded shadow p-4 text-sm z-50">
+                  <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-xl p-4 text-sm z-50">
                     <div className="mb-3 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-lg text-green-600">
+                      <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center font-bold text-lg text-teal-700">
                         {user.name?.charAt(0)?.toUpperCase() || 'U'}
                       </div>
-                      <div>
-                        <div className="font-semibold text-base text-slate-800">{user.name}</div>
-                        <div className="text-xs text-slate-500">{user.email}</div>
+                      <div className="overflow-hidden">
+                        <div className="font-semibold text-base text-slate-800 truncate">{user.name}</div>
+                        <div className="text-xs text-slate-500 truncate">{user.email}</div>
                       </div>
                     </div>
-                    <button
-                      className="w-full text-left text-blue-600 hover:bg-blue-50 px-2 py-1 rounded mb-1"
-                      onClick={() => alert('Edit profile coming soon!')}
-                    >
-                      Edit Profile
-                    </button>
-                    <button
-                      className="w-full text-left text-red-600 hover:bg-red-50 px-2 py-1 rounded"
-                      onClick={logout}
-                    >
-                      {t('profile.logout')}
-                    </button>
+                    <div className="border-t border-slate-100 pt-2 space-y-1">
+                      <a
+                        href="/profile"
+                        className="block w-full text-left text-slate-700 hover:bg-slate-50 hover:text-teal-600 px-3 py-1.5 rounded-lg text-xs font-medium"
+                      >
+                        {t('profile.myProfile')}
+                      </a>
+                      <button
+                        className="w-full text-left text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5"
+                        onClick={logout}
+                      >
+                        <span>🚪</span>
+                        <span>{t('profile.logout')}</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             )}
-          </div>
-          <button
-            className="md:hidden p-2 rounded-md hover:bg-gray-100"
-            onClick={() => setMobileMenuOpen((s) => !s)}
-          >
-            <svg
-              className="w-6 h-6 text-slate-700"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+
+            <button
+              className="md:hidden p-2 rounded-lg hover:bg-gray-100 text-slate-700"
+              onClick={() => setMobileMenuOpen((s) => !s)}
+              aria-label="Toggle Mobile Menu"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d={
-                  mobileMenuOpen
-                    ? "M6 18L18 6M6 6l12 12"
-                    : "M4 6h16M4 12h16M4 18h16"
-                }
-              />
-            </svg>
-          </button>
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d={
+                    mobileMenuOpen
+                      ? "M6 18L18 6M6 6l12 12"
+                      : "M4 6h16M4 12h16M4 18h16"
+                  }
+                />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
+
       {mobileMenuOpen && (
-        <div className="md:hidden bg-white border-t px-4 py-4 space-y-2">
-          {["Home", "About", "Service", "Doctors", "Contact"].map((item) => (
-            <a key={item} className="block">
-              {item}
+        <div className="md:hidden bg-white border-t border-slate-200 px-4 py-3 space-y-2">
+          {["home", "about", "services", "doctors", "contact"].map((id) => (
+            <a 
+              key={id} 
+              onClick={() => { scrollToSection(id); setMobileMenuOpen(false); }}
+              className="block py-2 text-sm font-medium text-slate-700 hover:text-teal-600"
+            >
+              {t(`nav.${id}`)}
             </a>
           ))}
+          {user && (
+            <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
+              <span className="text-xs text-slate-500 font-medium">{user.name}</span>
+              <button onClick={logout} className="text-xs text-red-600 font-semibold">{t('profile.logout')}</button>
+            </div>
+          )}
         </div>
       )}
     </header>
   );
 }
+
     

@@ -40,14 +40,14 @@ export default function Hero() {
             onClick={() => navigate('/ai-symptom-checker')}
             className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold px-6 py-3 rounded-xl shadow-lg transition-transform transform hover:scale-105 text-sm flex items-center gap-2"
           >
-            <span>🤖 AI Symptom Checker</span>
+            <span>🤖 {t('hero.cta.symptom')}</span>
             <span>➔</span>
           </button>
           <button
             onClick={() => navigate('/doctor-finder')}
             className="bg-white/10 hover:bg-white/20 text-white backdrop-blur-md border border-white/30 font-semibold px-6 py-3 rounded-xl shadow-lg transition-transform transform hover:scale-105 text-sm flex items-center gap-2"
           >
-            <span>🏥 Find Nearby Doctors & Hospitals</span>
+            <span>🏥 {t('hero.cta.find')}</span>
           </button>
         </div>
       </div>

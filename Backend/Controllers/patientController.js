@@ -1,5 +1,6 @@
 import User from '../Models/User.js';
 import MedicalRecord from '../Models/MedicalRecord.js';
+import Appointment from '../Models/Appointment.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -112,12 +113,6 @@ export const deleteMedicalRecord = async (req, res) => {
             }
         }
 
-        // Delete file from disk
-        const filePath = path.join(process.cwd(), 'public', record.fileUrl);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-        }
-
         await MedicalRecord.findByIdAndDelete(recordId);
 
         res.status(200).json({ message: "Record deleted successfully" });
@@ -125,3 +120,57 @@ export const deleteMedicalRecord = async (req, res) => {
         res.status(500).json({ message: "Error deleting record", error: error.message });
     }
 };
+
+export const getAppointments = async (req, res) => {
+    try {
+        const { id } = req.params; // patientId
+        if (req.userData.userId !== id && req.userData.role !== 'admin' && req.userData.role !== 'doctor') {
+            return res.status(403).json({ message: "Forbidden" });
+        }
+
+        const appointments = await Appointment.find({ patientId: id })
+            .populate('doctorId', 'name email specialization')
+            .sort({ createdAt: -1 });
+
+        res.status(200).json(appointments);
+    } catch (error) {
+        res.status(500).json({ message: "Error fetching appointments", error: error.message });
+    }
+};
+
+export const payAppointment = async (req, res) => {
+    try {
+        const { id, appointmentId } = req.params;
+        const { paymentMethod = 'UPI', amount, transactionId } = req.body;
+
+        const appointment = await Appointment.findById(appointmentId);
+        if (!appointment) {
+            return res.status(404).json({ message: "Appointment not found" });
+        }
+
+        const txn = transactionId || `TXN-TS-${Date.now().toString().slice(-6)}${Math.floor(100 + Math.random() * 900)}`;
+        const receipt = `REC-TS-${Date.now().toString().slice(-5)}`;
+
+        appointment.paymentStatus = 'Paid';
+        appointment.paymentDetails = {
+            transactionId: txn,
+            paymentMethod,
+            amount: amount || appointment.consultationFee || 500,
+            paidAt: new Date(),
+            receiptNumber: receipt
+        };
+
+        await appointment.save();
+        const populated = await Appointment.findById(appointment._id)
+            .populate('doctorId', 'name email specialization')
+            .populate('patientId', 'name email phone');
+
+        res.status(200).json({
+            message: "Payment processed successfully",
+            appointment: populated
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Error processing payment", error: error.message });
+    }
+};
+

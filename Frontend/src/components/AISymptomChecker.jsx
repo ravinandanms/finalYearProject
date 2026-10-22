@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useI18n } from "../context/I18nContext";
 
 export default function AISymptomChecker({ onBackHome }) {
   const navigate = useNavigate();
+  const { t, isKannada } = useI18n();
+
   const [messages, setMessages] = useState([
     { 
       sender: "bot", 
-      text: "Hello 👋 I'm your AI Medical Assistant. Please describe your symptoms in detail (e.g. chest pain, severe skin rash, joint swelling, persistent fever), and I'll analyze them, suggest likely causes, and help you find the right specialist doctors and hospitals nearby." 
+      text: isKannada 
+        ? "ನಮಸ್ಕಾರ 👋 ನಾನು ನಿಮ್ಮ ಟೆಲಿಸೇವಾ AI ವೈದ್ಯಕೀಯ ಸಹಾಯಕ. ನಿಮ್ಮ ರೋಗಲಕ್ಷಣಗಳನ್ನು (ಉದಾ: ಎದೆನೋವು, ಜ್ವರ, ಚರ್ಮದ ದದ್ದು, ಕೀಲು ನೋವು) ವಿವರವಾಗಿ ತಿಳಿಸಿ. ನಾನು ಅವುಗಳನ್ನು ವಿಶ್ಲೇಷಿಸಿ, ಸೂಕ್ತ ತಜ್ಞ ವೈದ್ಯರು ಹಾಗೂ ಸಮೀಪದ ಆಸ್ಪತ್ರೆಗಳನ್ನು ಶಿಫಾರಸು ಮಾಡುತ್ತೇನೆ."
+        : "Hello 👋 I'm your AI Medical Assistant. Please describe your symptoms in detail (e.g. chest pain, severe skin rash, joint swelling, persistent fever), and I'll analyze them, suggest likely causes, and help you find the right specialist doctors and hospitals nearby." 
     },
   ]);
   const [input, setInput] = useState("");
@@ -30,7 +35,12 @@ export default function AISymptomChecker({ onBackHome }) {
     setMessages((prev) => [...prev, userMsg]);
 
     setIsLoading(true);
-    const typingMsg = { sender: "bot", text: "Analyzing your symptoms and determining specialist care requirements..." };
+    const typingMsg = { 
+      sender: "bot", 
+      text: isKannada 
+        ? "ನಿಮ್ಮ ರೋಗಲಕ್ಷಣಗಳನ್ನು ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ ಮತ್ತು ತಜ್ಞ ವೈದ್ಯರ ವಿವರಗಳನ್ನು ಪಡೆಯಲಾಗುತ್ತಿದೆ..."
+        : "Analyzing your symptoms and determining specialist care requirements..." 
+    };
     const typingIndex = messages.length + 1;
     setMessages((prev) => [...prev, typingMsg]);
 
@@ -38,7 +48,7 @@ export default function AISymptomChecker({ onBackHome }) {
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userText, context: { page: 'ai-symptom-checker' } })
+        body: JSON.stringify({ message: userText, context: { page: 'ai-symptom-checker', lang: isKannada ? 'kn' : 'en' } })
       });
       const data = await response.json();
       if (!data.success) throw new Error(data.error);
@@ -58,7 +68,9 @@ export default function AISymptomChecker({ onBackHome }) {
         const next = [...prev];
         next[typingIndex] = {
           sender: "bot",
-          text: "Sorry, I couldn't process your request right now. Please check your connection and try again.",
+          text: isKannada 
+            ? "ಕ್ಷಮಿಸಿ, ಈ ಸಮಯದಲ್ಲಿ ವಿನಂತಿಯನ್ನು ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲು ಸಾಧ್ಯವಾಗುತ್ತಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
+            : "Sorry, I couldn't process your request right now. Please check your connection and try again.",
         };
         return next;
       });
@@ -69,7 +81,13 @@ export default function AISymptomChecker({ onBackHome }) {
 
   const MAX_CHARS = 500;
 
-  const quickSymptoms = [
+  const quickSymptoms = isKannada ? [
+    "ಎದೆ ನೋವು ಮತ್ತು ಉಸಿರಾಟದ ತೊಂದರೆ",
+    "ನಿರಂತರ ತೀವ್ರ ಜ್ವರ ಮತ್ತು ಮೈಕೈ ನೋವು",
+    "ಚರ್ಮದ ಕೆಂಪು ದದ್ದು ಮತ್ತು ಅಲರ್ಜಿ",
+    "ಕೀಲು ನೋವು ಮತ್ತು ಊತ",
+    "ತೀವ್ರ ತಲೆನೋವು ಮತ್ತು ತಲೆತಿರುಗುವಿಕೆ"
+  ] : [
     "Chest pain & shortness of breath",
     "Persistent high fever & body ache",
     "Red itchy skin rash & allergy",
@@ -80,22 +98,22 @@ export default function AISymptomChecker({ onBackHome }) {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <div className="bg-white shadow-xs border-b sticky top-0 z-10">
+      <div className="bg-white shadow-xs border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
                 onClick={onBackHome}
-                className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors font-medium text-sm"
+                className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors font-semibold text-sm"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                Back to Home
+                {t('nav.back')}
               </button>
               <div className="border-l border-slate-200 pl-4">
-                <h1 className="text-xl font-bold text-slate-800">AI Symptom Checker & Specialist Finder</h1>
-                <p className="text-xs text-slate-500">Automated Triage & Real Doctor / Hospital Locator</p>
+                <h1 className="text-xl font-bold text-slate-800">{t('ai.symptomTitle')}</h1>
+                <p className="text-xs text-slate-500">{t('ai.symptomSubtitle')}</p>
               </div>
             </div>
 
@@ -103,11 +121,12 @@ export default function AISymptomChecker({ onBackHome }) {
               onClick={() => navigate('/doctor-finder')}
               className="hidden sm:flex items-center gap-1.5 bg-teal-50 border border-teal-200 text-teal-700 hover:bg-teal-100 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
             >
-              <span>🏥 Direct Hospital Locator</span>
+              <span>🏥 {t('service.finder.title')}</span>
             </button>
           </div>
         </div>
       </div>
+
 
       {/* Main Content */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
@@ -216,27 +235,29 @@ export default function AISymptomChecker({ onBackHome }) {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                className="flex-1 px-4 py-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm text-slate-800 placeholder-slate-400"
-                placeholder="Describe your symptoms (e.g. sharp chest pain, rash, fever, knee pain)..."
+                className="flex-1 px-4 py-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm text-slate-800 placeholder-slate-400 font-medium"
+                placeholder={t('ai.describe')}
                 disabled={isLoading}
               />
               <button
                 onClick={() => sendMessage()}
-                className="bg-teal-600 text-white px-6 py-3 rounded-xl hover:bg-teal-700 disabled:opacity-60 transition-colors font-medium text-sm flex items-center gap-2 shadow-xs"
+                className="bg-teal-600 text-white px-6 py-3 rounded-xl hover:bg-teal-700 disabled:opacity-60 transition-colors font-bold text-sm flex items-center gap-2 shadow-xs"
                 disabled={isLoading}
               >
                 {isLoading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Analyzing…</span>
+                    <span>{t('ai.analyzing')}</span>
                   </>
                 ) : (
-                  <span>Send</span>
+                  <span>{isKannada ? 'ಕಳುಹಿಸಿ' : 'Send'}</span>
                 )}
               </button>
             </div>
             <p className="text-[11px] text-slate-400 text-center mt-2">
-              TeleSeva AI is an educational assistant. For medical emergencies, call your local ambulance (108/112) immediately.
+              {isKannada 
+                ? 'ಟೆಲಿಸೇವಾ AI ಶೈಕ್ಷಣಿಕ ಸಹಾಯಕವಾಗಿದೆ. ವೈದ್ಯಕೀಯ ತುರ್ತು ಪರಿಸ್ಥಿತಿಗಾಗಿ ತಕ್ಷಣವೇ ಆಂಬ್ಯುಲೆನ್ಸ್ (108/112) ಗೆ ಕರೆ ಮಾಡಿ.'
+                : 'TeleSeva AI is an educational assistant. For medical emergencies, call your local ambulance (108/112) immediately.'}
             </p>
           </div>
         </div>
@@ -244,3 +265,4 @@ export default function AISymptomChecker({ onBackHome }) {
     </div>
   );
 }
+
