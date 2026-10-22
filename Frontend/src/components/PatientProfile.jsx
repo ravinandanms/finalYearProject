@@ -436,7 +436,7 @@ export default function PatientProfile({ onBackHome }) {
                     <p className="text-xs text-slate-500">{record.type} • Added on {new Date(record.createdAt).toLocaleDateString()}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <a href={`http://localhost:3000${record.fileUrl}`} target="_blank" rel="noreferrer" className="p-2 text-teal-600 hover:bg-teal-50 rounded-xl" title="View">
+                    <a href={`https://finalyearproject-tm8y.onrender.com${record.fileUrl}`} target="_blank" rel="noreferrer" className="p-2 text-teal-600 hover:bg-teal-50 rounded-xl" title="View">
                       <Eye size={18}/>
                     </a>
                     <button onClick={() => deleteRecord(record._id)} className="p-2 text-red-500 hover:bg-red-50 rounded-xl" title="Delete">

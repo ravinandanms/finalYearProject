@@ -18,7 +18,7 @@ export function AuthProvider({ children }) {
   // Manage socket connection lifecycle
   useEffect(() => {
     if (!socketRef.current) {
-      const newSocket = io("http://localhost:3000", {
+      const newSocket = io("https://finalyearproject-tm8y.onrender.com", {
         transports: ["websocket", "polling"],
         reconnection: true,
         reconnectionAttempts: 20,
