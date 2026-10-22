@@ -14,6 +14,7 @@ import adminRoutes from "./Routes/adminRoutes.js";
 import patientRoutes from "./Routes/patientRoutes.js";
 import doctorRoutes from "./Routes/doctorRoutes.js";
 import doctorHospitalRoutes from "./Routes/doctorHospitalRoutes.js";
+import paymentRoutes from "./Routes/paymentRoutes.js";
 import { seedAdmin } from "./Database/seedAdmin.js";
 import path from "path";
 
@@ -44,6 +45,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/patients", patientRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/doctors-hospitals", doctorHospitalRoutes);
+app.use("/api/payments", paymentRoutes);
 
 // In-memory store for online users
 // Maps userId string to socket details
@@ -117,6 +119,18 @@ io.on("connection", (socket) => {
             const targetData = onlineUsers.get(targetId);
             if (targetData?.socketId) {
                 io.to(targetData.socketId).emit("call_ended");
+            }
+        }
+    });
+
+    // Forward digital prescription & updated consultation fee to patient
+    socket.on("prescription_created", (data) => {
+        const targetId = data?.to ? String(data.to) : null;
+        console.log(`Prescription created by doctor, forwarding to patient ${targetId}. Fee:`, data?.prescriptionData?.consultationFee);
+        if (targetId) {
+            const patientData = onlineUsers.get(targetId);
+            if (patientData?.socketId) {
+                io.to(patientData.socketId).emit("prescription_created", data);
             }
         }
     });

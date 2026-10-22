@@ -34,6 +34,10 @@ const userSchema = new mongoose.Schema({
             return this.role === 'doctor';
         }
     },
+    consultationFee: {
+        type: Number,
+        default: 500
+    },
     // Patient Profile Fields
     dateOfBirth: String,
     gender: String,

@@ -1,10 +1,9 @@
-import React from 'react'
-import { useState } from 'react'
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-import { useAuth } from "../context/AuthContext"
-import { useI18n } from "../context/I18nContext"
-import telesevaLogo from "../assets/telesevaLogo.jpg"
-
+import { useAuth } from "../context/AuthContext";
+import { useI18n } from "../context/I18nContext";
+import telesevaLogo from "../assets/telesevaLogo.jpg";
 
 function scrollToSection(id) {
   const el = document.getElementById(id);
@@ -14,6 +13,7 @@ function scrollToSection(id) {
 }
 
 export default function Navbar(){
+    const navigate = useNavigate();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
     const { user, logout } = useAuth();
@@ -87,12 +87,16 @@ export default function Navbar(){
                       </div>
                     </div>
                     <div className="border-t border-slate-100 pt-2 space-y-1">
-                      <a
-                        href="/profile"
-                        className="block w-full text-left text-slate-700 hover:bg-slate-50 hover:text-teal-600 px-3 py-1.5 rounded-lg text-xs font-medium"
+                      <button
+                        onClick={() => {
+                          setProfileOpen(false);
+                          navigate('/profile');
+                        }}
+                        className="w-full text-left text-slate-700 hover:bg-slate-50 hover:text-teal-600 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
                       >
-                        {t('profile.myProfile')}
-                      </a>
+                        <span>👤</span>
+                        <span>{t('profile.myProfile')}</span>
+                      </button>
                       <button
                         className="w-full text-left text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5"
                         onClick={logout}
@@ -145,9 +149,21 @@ export default function Navbar(){
             </a>
           ))}
           {user && (
-            <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
-              <span className="text-xs text-slate-500 font-medium">{user.name}</span>
-              <button onClick={logout} className="text-xs text-red-600 font-semibold">{t('profile.logout')}</button>
+            <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigate('/profile');
+                }}
+                className="w-full text-left py-1 text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1.5"
+              >
+                <span>👤</span>
+                <span>{t('profile.myProfile')} ({user.name})</span>
+              </button>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 truncate max-w-[180px]">{user.email}</span>
+                <button onClick={logout} className="text-red-600 font-semibold">{t('profile.logout')}</button>
+              </div>
             </div>
           )}
         </div>

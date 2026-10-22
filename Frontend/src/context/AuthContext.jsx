@@ -4,21 +4,16 @@ import { io } from "socket.io-client";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [socket, setSocket] = useState(null);
-  const socketRef = useRef(null);
-
-  useEffect(() => {
+  const [user, setUser] = useState(() => {
     try {
       const stored = localStorage.getItem("teleseva_user");
-      if (stored) {
-        const parsedUser = JSON.parse(stored);
-        setUser(parsedUser);
-      }
+      return stored ? JSON.parse(stored) : null;
     } catch (_) {
-      // ignore
+      return null;
     }
-  }, []);
+  });
+  const [socket, setSocket] = useState(null);
+  const socketRef = useRef(null);
 
   // Manage socket connection lifecycle
   useEffect(() => {

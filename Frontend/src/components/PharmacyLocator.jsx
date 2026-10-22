@@ -178,6 +178,8 @@ export default function PharmacyLocator({ onBackHome }) {
   // Order Modal state
   const [orderModalPlace, setOrderModalPlace] = useState(null);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const [orderType, setOrderType] = useState('pickup'); // 'pickup' | 'delivery'
+  const [orderPhone, setOrderPhone] = useState('');
 
   // Fetch location on mount
   useEffect(() => {
@@ -859,74 +861,165 @@ export default function PharmacyLocator({ onBackHome }) {
         </div>
       </main>
 
-      {/* Order / Reserve Modal */}
+      {/* Order / Reserve Modal - High Z-Index to always stay above Leaflet map controls */}
       {orderModalPlace && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full border border-slate-200 animate-fadeIn">
+        <div 
+          className="fixed inset-0 z-[99999] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+          onClick={() => setOrderModalPlace(null)}
+        >
+          <div 
+            className="bg-white rounded-3xl shadow-2xl p-6 sm:p-7 max-w-lg w-full border border-slate-200 animate-fadeIn relative my-auto max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             {!orderSuccess ? (
               <div className="space-y-4">
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-start border-b border-slate-100 pb-3">
                   <div>
-                    <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">
-                      {isKannada ? 'ಮೆಡಿಕಲ್ ಸ್ಟೋರ್ ಆರ್ಡರ್' : 'Pharmacy Order & Pickup'}
+                    <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      {isKannada ? 'ಮೆಡಿಕಲ್ ಸ್ಟೋರ್ ಆರ್ಡರ್ / ಪಿಕಪ್' : 'Pharmacy Order & Reserve'}
                     </span>
-                    <h3 className="text-lg font-bold text-slate-900">{orderModalPlace.name}</h3>
+                    <h3 className="text-lg font-extrabold text-slate-900 mt-1">{orderModalPlace.name}</h3>
                   </div>
-                  <button onClick={() => setOrderModalPlace(null)} className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+                  <button 
+                    onClick={() => setOrderModalPlace(null)} 
+                    className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center text-sm font-bold transition"
+                  >
+                    ✕
+                  </button>
                 </div>
 
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1 text-xs">
-                  <p className="text-slate-600"><strong>📍 Address:</strong> {orderModalPlace.vicinity}</p>
-                  <p className="text-slate-600"><strong>📞 Phone:</strong> {orderModalPlace.phone}</p>
-                  <p className="text-slate-600"><strong>🕒 Hours:</strong> {orderModalPlace.timing}</p>
-                </div>
-
+                {/* Fulfillment Mode Toggle */}
                 <div>
-                  <h4 className="text-xs font-bold text-slate-700 uppercase mb-2">
-                    {isKannada ? 'ಆರ್ಡರ್ ಮಾಡಲಾಗುತ್ತಿರುವ ಔಷಧಿಗಳು:' : 'Medicines to Reserve / Order:'}
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                    {isKannada ? 'ಸೇವೆ ಆಯ್ಕೆಮಾಡಿ:' : 'Choose Fulfillment Method:'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOrderType('pickup')}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        orderType === 'pickup'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-200 font-bold'
+                          : 'border-slate-200 hover:bg-slate-50 text-slate-600 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-lg">🏬</span>
+                        <span className="text-xs sm:text-sm font-bold">{isKannada ? 'ಸ್ಟೋರ್ ಪಿಕಪ್' : 'Self Pickup'}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Ready in 30 mins • Free</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setOrderType('delivery')}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        orderType === 'delivery'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-200 font-bold'
+                          : 'border-slate-200 hover:bg-slate-50 text-slate-600 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-lg">🛵</span>
+                        <span className="text-xs sm:text-sm font-bold">{isKannada ? 'ಮನೆ ಬಾಗಿಲಿಗೆ ಡೆಲಿವರಿ' : 'Home Delivery'}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Direct from local chemist</p>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5 text-xs">
+                  <p className="text-slate-700"><strong>📍 Pharmacy Location:</strong> {orderModalPlace.vicinity}</p>
+                  <p className="text-slate-700"><strong>📞 Store Helpline:</strong> {orderModalPlace.phone}</p>
+                  <p className="text-slate-700"><strong>🕒 Operating Hours:</strong> {orderModalPlace.timing}</p>
+                </div>
+
+                {/* Medicines List */}
+                <div>
+                  <h4 className="text-xs font-bold text-slate-700 uppercase mb-1.5 flex justify-between items-center">
+                    <span>{isKannada ? 'ಆರ್ಡರ್ ಮಾಡಲಾಗುತ್ತಿರುವ ಔಷಧಿಗಳು:' : 'Medicines to Reserve:'}</span>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Verified In Stock</span>
                   </h4>
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs space-y-1.5 text-emerald-950 font-medium">
+                  <div className="bg-white border border-slate-200 rounded-2xl p-3 text-xs space-y-1.5 max-h-36 overflow-y-auto">
                     {orderModalPlace.stockItems?.map((med, mIdx) => (
-                      <div key={mIdx} className="flex justify-between items-center">
-                        <span>✓ {med}</span>
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">In Stock</span>
+                      <div key={mIdx} className="flex justify-between items-center py-1 border-b border-slate-100 last:border-0">
+                        <span className="font-semibold text-slate-800">💊 {med}</span>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">In Stock ✓</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
+                {/* Patient Phone Input */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    {isKannada ? 'ಮೊಬೈಲ್ ಸಂಖ್ಯೆ (ದೃಢೀಕರಣ SMS ಗಾಗಿ):' : 'Contact Phone (For Order SMS / Call):'}
+                  </label>
+                  <input
+                    type="tel"
+                    value={orderPhone}
+                    onChange={(e) => setOrderPhone(e.target.value)}
+                    placeholder="e.g. +91 98765 43210"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
                 <div className="flex gap-3 pt-2">
                   <button
                     onClick={() => setOrderModalPlace(null)}
-                    className="flex-1 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    className="flex-1 py-3 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => setOrderSuccess(true)}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-xs font-bold shadow-md transition-all"
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-xs font-bold shadow-lg transition-all flex items-center justify-center gap-1.5"
                   >
-                    {isKannada ? 'ಆರ್ಡರ್ ದೃಢೀಕರಿಸಿ' : 'Confirm & Reserve Order'}
+                    <span>✓</span>
+                    <span>{isKannada ? 'ಆರ್ಡರ್ ದೃಢೀಕರಿಸಿ' : orderType === 'pickup' ? 'Confirm Store Pickup' : 'Confirm Delivery Request'}</span>
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="text-center py-6 space-y-3">
-                <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
+              <div className="text-center py-4 space-y-4">
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl font-black shadow-inner">
                   ✓
                 </div>
-                <h3 className="text-lg font-bold text-slate-900">
-                  {isKannada ? 'ಔಷಧಿ ಆರ್ಡರ್ ಯಶಸ್ವಿಯಾಗಿದೆ!' : 'Medicines Reserved Successfully!'}
-                </h3>
-                <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                <div>
+                  <h3 className="text-xl font-extrabold text-slate-900">
+                    {isKannada ? 'ಔಷಧಿ ಆರ್ಡರ್ ಯಶಸ್ವಿಯಾಗಿದೆ!' : 'Medicines Reserved Successfully!'}
+                  </h3>
+                  <p className="text-xs font-bold text-emerald-700 mt-1">
+                    Order Ref: #ORD-TS-{Date.now().toString().slice(-5)}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs space-y-1.5 text-left">
+                  <p className="text-slate-700"><strong>Pharmacy:</strong> {orderModalPlace.name}</p>
+                  <p className="text-slate-700"><strong>Fulfillment:</strong> {orderType === 'pickup' ? '🏬 Self Pickup (Ready in 30 mins)' : '🛵 Doorstep Delivery'}</p>
+                  <p className="text-slate-700"><strong>Phone:</strong> {orderPhone || 'Your registered contact'}</p>
+                </div>
+
+                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
                   {isKannada 
-                    ? `ನಿಮ್ಮ ಪ್ರಿಸ್ಕ್ರಿಪ್ಷನ್ ವಿವರಗಳನ್ನು ${orderModalPlace.name} ರವರಿಗೆ ಕಳುಹಿಸಲಾಗಿದೆ. ನೀವು 1 ಗಂಟೆಯೊಳಗೆ ಪಿಕಪ್ ಮಾಡಬಹುದು ಅಥವಾ ಡೆಲಿವರಿ ಪಡೆಯಬಹುದು.`
-                    : `Your medicine prescription has been forwarded to ${orderModalPlace.name}. You can pick it up or contact them for home delivery.`}
+                    ? `ನಿಮ್ಮ ಪ್ರಿಸ್ಕ್ರಿಪ್ಷನ್ ವಿವರಗಳನ್ನು ${orderModalPlace.name} ರವರಿಗೆ ಕಳುಹಿಸಲಾಗಿದೆ. ಔಷಧಿಗಳನ್ನು ಪ್ಯಾಕ್ ಮಾಡಲಾಗುತ್ತಿದೆ.`
+                    : `Your medicine prescription has been directly notified to ${orderModalPlace.name}. The pharmacy team is keeping your order packed and ready.`}
                 </p>
-                <div className="pt-3">
+
+                <div className="pt-2 flex gap-3">
+                  <a
+                    href={`tel:${orderModalPlace.phone}`}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1"
+                  >
+                    <span>📞</span>
+                    <span>Call Pharmacy</span>
+                  </a>
                   <button
-                    onClick={() => setOrderModalPlace(null)}
-                    className="w-full bg-slate-900 text-white font-bold py-2.5 rounded-xl text-xs"
+                    onClick={() => {
+                      setOrderModalPlace(null);
+                      setOrderSuccess(false);
+                    }}
+                    className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-xs shadow-md"
                   >
                     {isKannada ? 'ಮುಕ್ತಾಯ' : 'Done'}
                   </button>

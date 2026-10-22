@@ -87,8 +87,14 @@ export const createConsultationRecord = async (req, res) => {
         });
         
         await newAppointment.save();
+
+        // Also update doctor's profile consultation fee if provided
+        if (consultationFee) {
+            await User.findByIdAndUpdate(id, { consultationFee: Number(consultationFee) || 500 });
+        }
+
         const populated = await Appointment.findById(newAppointment._id)
-            .populate('doctorId', 'name email specialization')
+            .populate('doctorId', 'name email specialization consultationFee')
             .populate('patientId', 'name email phone');
             
         res.status(201).json(populated || newAppointment);
@@ -96,4 +102,23 @@ export const createConsultationRecord = async (req, res) => {
         res.status(500).json({ message: "Error creating consultation record", error: error.message });
     }
 };
+
+export const updateDoctorFee = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { consultationFee } = req.body;
+        if (req.userData.userId !== id && req.userData.role !== 'admin') {
+            return res.status(403).json({ message: "Forbidden" });
+        }
+        const updated = await User.findByIdAndUpdate(
+            id, 
+            { consultationFee: Number(consultationFee) || 500 }, 
+            { new: true }
+        ).select('-password');
+        res.status(200).json(updated);
+    } catch (error) {
+        res.status(500).json({ message: "Error updating doctor fee", error: error.message });
+    }
+};
+
 
