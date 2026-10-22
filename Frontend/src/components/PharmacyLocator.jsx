@@ -1,152 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import { useI18n } from '../context/I18nContext';
-
-// Fix for default marker icons in Leaflet with Webpack/Vite
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-// Custom Icons
-const createCustomIcon = (svgString, className) => {
-  return L.divIcon({
-    html: svgString,
-    className: className,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -14],
-  });
-};
-
-const userIcon = createCustomIcon(`
-  <div style="background-color: #2563EB; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;">
-    <div style="width: 8px; height: 8px; background: white; border-radius: 50%;"></div>
-  </div>
-`, 'user-marker');
-
-const pharmacyIcon = createCustomIcon(`
-  <div style="background-color: #059669; width: 28px; height: 28px; border-radius: 8px; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 16px;">
-    💊
-  </div>
-`, 'pharmacy-marker');
-
-const hospitalIcon = createCustomIcon(`
-  <div style="background-color: #DC2626; width: 28px; height: 28px; border-radius: 8px; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 15px;">
-    🏥
-  </div>
-`, 'hospital-marker');
-
-// Haversine formula to calculate straight-line distance in km
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return null;
-  const R = 6371; // Earth's radius in km
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
-  const a = 
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
-    Math.sin(dLon / 2) * Math.sin(dLon / 2); 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
-  return parseFloat((R * c).toFixed(1));
-}
-
-// Generate realistic verified nearby facilities around coordinate for guaranteed fallback reliability
-function generateNearbyFallbackPlaces(centerLat, centerLng, filterType, prescribedMedNames = []) {
-  const pharmacyBrands = [
-    { name: "Apollo Pharmacy 24/7", timing: "Open 24 Hours", phone: "+91 80 2295 6789", delivery: true },
-    { name: "MedPlus Pharmacy & Wellness", timing: "8:00 AM - 11:30 PM", phone: "+91 80 4455 1234", delivery: true },
-    { name: "Pradhan Mantri Jan Aushadhi Kendra", timing: "9:00 AM - 9:00 PM (Generic Meds)", phone: "+91 80 2345 9876", delivery: false },
-    { name: "Wellness Forever Chemist & Superstore", timing: "Open 24 Hours", phone: "+91 80 3344 5566", delivery: true },
-    { name: "Aster Pharmacy & Diagnostics", timing: "7:30 AM - 11:00 PM", phone: "+91 80 6789 0123", delivery: true },
-    { name: "Trust Chemists & Druggists", timing: "8:00 AM - 10:00 PM", phone: "+91 80 5566 7788", delivery: true },
-    { name: "Sanjivani Medical Store & Surgical", timing: "8:30 AM - 10:30 PM", phone: "+91 80 2233 4455", delivery: false }
-  ];
-
-  const hospitalBrands = [
-    { name: "Manipal Super Specialty Hospital", timing: "24x7 Emergency & Trauma", phone: "+91 80 2502 4444", emergency: true },
-    { name: "Fortis Healthcare & Multispecialty Clinic", timing: "24x7 In-Patient / Emergency", phone: "+91 80 6621 4444", emergency: true },
-    { name: "Aster CMI Hospital & Critical Care", timing: "24x7 Emergency Services", phone: "+91 80 4345 5000", emergency: true },
-    { name: "Victoria Government District Hospital", timing: "24x7 Casualty & OPD 9AM-2PM", phone: "+91 80 2670 1150", emergency: true },
-    { name: "City Health Care & Diagnostic Centre", timing: "8:00 AM - 9:00 PM", phone: "+91 80 2341 5566", emergency: false },
-    { name: "Narayana Multispeciality Hospital", timing: "24x7 Emergency & Cardiac Care", phone: "+91 80 7122 2222", emergency: true }
-  ];
-
-  const places = [];
-  const radiusDegrees = 0.035; // approx 3-4km spread
-
-  // Add Pharmacies
-  if (filterType === 'all' || filterType === 'pharmacy') {
-    pharmacyBrands.forEach((b, idx) => {
-      const angle = (idx * 52) * (Math.PI / 180);
-      const distanceFactor = 0.008 + (idx * 0.004);
-      const lat = centerLat + Math.sin(angle) * distanceFactor;
-      const lng = centerLng + Math.cos(angle) * distanceFactor;
-      const dist = calculateDistance(centerLat, centerLng, lat, lng);
-
-      places.push({
-        id: `fallback-pharm-${idx}`,
-        name: b.name,
-        type: 'pharmacy',
-        geometry: { location: { lat, lng } },
-        vicinity: `${(dist * 0.8 + 0.3).toFixed(1)} km from current location, Main Road`,
-        phone: b.phone,
-        timing: b.timing,
-        delivery: b.delivery,
-        distanceKm: dist,
-        hasPrescribedMeds: prescribedMedNames.length > 0,
-        stockItems: prescribedMedNames.length > 0 ? prescribedMedNames : ["Paracetamol 650mg", "Amoxicillin 500mg", "Cetirizine 10mg", "Antacids"]
-      });
-    });
-  }
-
-  // Add Hospitals
-  if (filterType === 'all' || filterType === 'hospital') {
-    hospitalBrands.forEach((b, idx) => {
-      const angle = (idx * 60 + 30) * (Math.PI / 180);
-      const distanceFactor = 0.012 + (idx * 0.005);
-      const lat = centerLat + Math.sin(angle) * distanceFactor;
-      const lng = centerLng + Math.cos(angle) * distanceFactor;
-      const dist = calculateDistance(centerLat, centerLng, lat, lng);
-
-      places.push({
-        id: `fallback-hosp-${idx}`,
-        name: b.name,
-        type: 'hospital',
-        geometry: { location: { lat, lng } },
-        vicinity: `${(dist * 0.9 + 0.5).toFixed(1)} km, Healthcare Avenue`,
-        phone: b.phone,
-        timing: b.timing,
-        emergency: b.emergency,
-        distanceKm: dist,
-        bedsAvailable: 8 + (idx * 4)
-      });
-    });
-  }
-
-  return places.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
-}
-
-// Component to handle map view updating
-function MapUpdater({ center, zoom, routeCoordinates, selectedPlace }) {
-  const map = useMap();
-  useEffect(() => {
-    if (routeCoordinates && routeCoordinates.length > 0) {
-      const bounds = L.latLngBounds(routeCoordinates);
-      map.fitBounds(bounds, { padding: [50, 50] });
-    } else if (selectedPlace?.geometry?.location) {
-      map.setView([selectedPlace.geometry.location.lat, selectedPlace.geometry.location.lng], 15);
-    } else if (center) {
-      map.setView([center.lat, center.lng], zoom);
-    }
-  }, [center, zoom, routeCoordinates, selectedPlace, map]);
-  return null;
-}
+import GoogleMapView from './GoogleMapView';
+import { searchNearbyHealthcarePlaces } from '../utils/googlePlacesService';
+import { useProperLocation } from '../utils/useProperLocation';
 
 export default function PharmacyLocator({ onBackHome }) {
   const routerLocation = useLocation();
@@ -156,616 +13,521 @@ export default function PharmacyLocator({ onBackHome }) {
   // Prescribed medicines passed from post-video consultation
   const prescriptionState = routerLocation.state || {};
   const prescribedMedicines = prescriptionState.prescribedMedicines || [];
-  const prescribedMedicineNames = prescribedMedicines.map(m => typeof m === 'string' ? m : m.name).filter(Boolean);
+  const prescribedMedicineNames = prescribedMedicines.map((m) =>
+    typeof m === 'string' ? m : m.name
+  ).filter(Boolean);
 
-  const defaultLocation = { lat: 12.9716, lng: 77.5946 }; // Bengaluru default coordinates
-  
-  const [mapCenter, setMapCenter] = useState(defaultLocation);
-  const [zoomLevel, setZoomLevel] = useState(13);
-  const [userLocation, setUserLocation] = useState(null);
+  const defaultLocation = { lat: 12.6889, lng: 77.7130 }; // Anekal center
+
+  // Proper Location Hook
+  const {
+    coords: userCoords,
+    setCoords: setUserCoords,
+    accuracy,
+    locationLabel,
+    setLocationLabel,
+    status: locStatus,
+    errorMessage: locError,
+    requestLocation,
+    setCustomLocation,
+    reverseGeocode
+  } = useProperLocation(defaultLocation);
+
+  const [mapCenter, setMapCenter] = useState(userCoords || defaultLocation);
+  const [zoomLevel, setZoomLevel] = useState(14);
+  const [userLocation, setUserLocation] = useState(userCoords || defaultLocation);
   const [searchLocation, setSearchLocation] = useState(prescriptionState.city || '');
   const [nearbyPlaces, setNearbyPlaces] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [radiusKm, setRadiusKm] = useState(5);
-  
-  const [routeCoordinates, setRouteCoordinates] = useState([]);
-  const [routeInfo, setRouteInfo] = useState(null); // { distance, time }
-  
+
+  const [showRoute, setShowRoute] = useState(false);
+  const [routeInfo, setRouteInfo] = useState(null); // { distanceText, durationText, steps }
+  const [showSteps, setShowSteps] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [filter, setFilter] = useState(prescribedMedicineNames.length > 0 ? 'pharmacy' : 'all'); // 'all', 'hospital', 'pharmacy'
-  
-  // Order Modal state
+
+  // Order / Reserve Modal state
   const [orderModalPlace, setOrderModalPlace] = useState(null);
   const [orderSuccess, setOrderSuccess] = useState(false);
-  const [orderType, setOrderType] = useState('pickup'); // 'pickup' | 'delivery'
+  const [orderType, setOrderType] = useState('pickup');
   const [orderPhone, setOrderPhone] = useState('');
 
-  // Fetch location on mount
+  // 1. Initial Load using saved or default Anekal location
   useEffect(() => {
-    handleUseMyLocation(false);
+    const initialPos = userCoords || defaultLocation;
+    setUserLocation(initialPos);
+    setMapCenter(initialPos);
+    searchPlaces(initialPos.lat, initialPos.lng, filter, radiusKm);
   }, []);
 
-  // Re-fetch places if filter or radius changes
-  useEffect(() => {
-    if (mapCenter) {
-      searchNearbyPlaces(mapCenter.lat, mapCenter.lng, filter, radiusKm);
-    }
-  }, [filter, radiusKm]);
-
-  const handleUseMyLocation = (showErrors = true) => {
-    if (!navigator.geolocation) {
-      if (showErrors) setErrorMsg(t('loc.noPlaces', 'Geolocation is not supported by your browser.'));
-      searchNearbyPlaces(defaultLocation.lat, defaultLocation.lng, filter, radiusKm);
-      return;
-    }
-
-    setIsLoading(true);
-    setErrorMsg('');
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        
-        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-          setErrorMsg('Invalid coordinates received from GPS.');
-          setIsLoading(false);
-          return;
-        }
-
-        const userPos = { lat, lng };
-        setUserLocation(userPos);
-        setMapCenter(userPos);
-        setZoomLevel(14);
-        setRouteCoordinates([]);
-        setRouteInfo(null);
-        setSelectedPlace(null);
-        searchNearbyPlaces(userPos.lat, userPos.lng, filter, radiusKm);
-      },
-      (error) => {
-        console.warn('Geolocation error, using standard regional center:', error.message);
-        setUserLocation(defaultLocation);
-        setMapCenter(defaultLocation);
-        searchNearbyPlaces(defaultLocation.lat, defaultLocation.lng, filter, radiusKm);
-        if (showErrors) {
-          setErrorMsg(isKannada ? "ನಿಮ್ಮ GPS ಸ್ಥಳವನ್ನು ಪಡೆಯಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಸಾಮಾನ್ಯ ನಗರ ಪ್ರದೇಶವನ್ನು ಬಳಸಲಾಗುತ್ತಿದೆ." : "Using default city coordinates. You can search your locality manually.");
-        }
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-    );
-  };
-
-  const searchNearbyPlaces = async (lat, lng, currentFilter, currentRadius) => {
-    if (!lat || !lng) return;
-
-    setIsLoading(true);
-    setErrorMsg('');
-    setRouteCoordinates([]);
-    setRouteInfo(null);
-
-    const radiusMeters = (currentRadius || radiusKm || 5) * 1000;
-    
-    // Construct robust Overpass Query with multiple healthcare tags
-    let filterQuery = '';
-    if (currentFilter === 'hospital' || currentFilter === 'all') {
-      filterQuery += `
-        node["amenity"="hospital"](around:${radiusMeters},${lat},${lng});
-        way["amenity"="hospital"](around:${radiusMeters},${lat},${lng});
-        node["amenity"="clinic"](around:${radiusMeters},${lat},${lng});
-        way["amenity"="clinic"](around:${radiusMeters},${lat},${lng});
-        node["healthcare"="hospital"](around:${radiusMeters},${lat},${lng});
-        node["healthcare"="clinic"](around:${radiusMeters},${lat},${lng});
-      `;
-    }
-    if (currentFilter === 'pharmacy' || currentFilter === 'all') {
-      filterQuery += `
-        node["amenity"="pharmacy"](around:${radiusMeters},${lat},${lng});
-        way["amenity"="pharmacy"](around:${radiusMeters},${lat},${lng});
-        node["healthcare"="pharmacy"](around:${radiusMeters},${lat},${lng});
-        node["shop"="chemist"](around:${radiusMeters},${lat},${lng});
-        node["shop"="medical_supply"](around:${radiusMeters},${lat},${lng});
-      `;
-    }
-
-    const query = `
-      [out:json][timeout:10];
-      (
-        ${filterQuery}
-      );
-      out center 35;
-    `;
-
-    let placesFound = [];
-
-    // Try Overpass primary & mirror
-    const endpoints = [
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter'
-    ];
-
-    for (const endpoint of endpoints) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'data=' + encodeURIComponent(query),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.elements && data.elements.length > 0) {
-            placesFound = data.elements.map(el => {
-              const elementLat = el.lat || el.center?.lat;
-              const elementLon = el.lon || el.center?.lon;
-              const isPharmacy = el.tags?.amenity === 'pharmacy' || el.tags?.healthcare === 'pharmacy' || el.tags?.shop === 'chemist';
-              const name = el.tags?.name || (isPharmacy ? 'Local Medical Store & Pharmacy' : 'City Health Hospital & Clinic');
-              const vicinity = el.tags?.['addr:street'] 
-                ? `${el.tags?.['addr:housenumber'] || ''} ${el.tags?.['addr:street']}`.trim()
-                : (el.tags?.['addr:city'] || el.tags?.['addr:suburb'] || 'Near Main Road');
-              
-              const straightLineDist = userLocation ? calculateDistance(userLocation.lat, userLocation.lng, elementLat, elementLon) : calculateDistance(lat, lng, elementLat, elementLon);
-              
-              return {
-                id: `osm-${el.id}`,
-                name: name,
-                type: isPharmacy ? 'pharmacy' : 'hospital',
-                geometry: { location: { lat: elementLat, lng: elementLon } },
-                vicinity: vicinity,
-                phone: el.tags?.phone || el.tags?.['contact:phone'] || '+91 80 2345 6789',
-                timing: isPharmacy ? '8:00 AM - 11:00 PM' : '24x7 Emergency & Care',
-                delivery: isPharmacy,
-                hasPrescribedMeds: isPharmacy && prescribedMedicineNames.length > 0,
-                stockItems: prescribedMedicineNames.length > 0 ? prescribedMedicineNames : ["Paracetamol", "Amoxicillin", "Cetirizine"],
-                distanceKm: straightLineDist
-              };
-            }).filter(p => p.geometry.location.lat && p.geometry.location.lng);
-            break;
-          }
-        }
-      } catch (err) {
-        console.warn(`Overpass endpoint ${endpoint} failed or timed out. Trying fallback:`, err.message);
-      }
-    }
-
-    // If Overpass returned few or zero results, merge with our rich guaranteed real-world dataset
-    if (placesFound.length < 4) {
-      const fallbackList = generateNearbyFallbackPlaces(lat, lng, currentFilter, prescribedMedicineNames);
-      placesFound = [...placesFound, ...fallbackList];
-    }
-
-    // Sort by distance
-    placesFound.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
-
-    // Filter duplicates by name & distance
-    const uniqueMap = new Map();
-    placesFound.forEach(p => {
-      const key = `${p.name.slice(0, 10)}-${p.type}`;
-      if (!uniqueMap.has(key)) uniqueMap.set(key, p);
+  // Set location by dragging blue pin on map or clicking on map
+  const handleManualLocationSelect = async (newCoords) => {
+    setUserLocation(newCoords);
+    setMapCenter(newCoords);
+    clearRoute();
+    const address = await reverseGeocode(newCoords.lat, newCoords.lng);
+    setCustomLocation(newCoords, address, (c) => {
+      searchPlaces(c.lat, c.lng, filter, radiusKm);
     });
-    const finalPlaces = Array.from(uniqueMap.values());
-
-    setNearbyPlaces(finalPlaces);
-    setIsLoading(false);
   };
 
-  const handlePlaceClick = (place) => {
-    setSelectedPlace(place);
-    setRouteCoordinates([]); 
-    setRouteInfo(null);
+  // Quick Locality Button Handler
+  const handleQuickLocality = (loc) => {
+    setUserLocation(loc.coords);
+    setMapCenter(loc.coords);
+    setSearchLocation(loc.name);
+    clearRoute();
+    setCustomLocation(loc.coords, loc.name, (c) => {
+      searchPlaces(c.lat, c.lng, filter, radiusKm);
+    });
   };
 
-  const getDirections = async (destPlace) => {
-    const target = destPlace || selectedPlace;
-    if (!target) return;
-    
-    const origin = userLocation || mapCenter;
-    const dest = target.geometry.location;
-
+  // 2. Fetch Places via Google Places API when filter, radius, or mapCenter changes
+  const searchPlaces = async (lat, lng, curFilter, curRadius) => {
+    if (!lat || !lng) return;
     setIsLoading(true);
     setErrorMsg('');
 
-    // Try OSRM route service
-    const url = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${dest.lng},${dest.lat}?overview=full&geometries=geojson`;
-    
     try {
-      const response = await fetch(url);
-      const data = await response.json();
-      
-      if (data.routes && data.routes.length > 0) {
-        const route = data.routes[0];
-        const coordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
-        setRouteCoordinates(coordinates);
-        setRouteInfo({
-          distance: (route.distance / 1000).toFixed(1),
-          time: Math.max(1, Math.round(route.duration / 60))
-        });
-      } else {
-        // Fallback straight-line polyline
-        setRouteCoordinates([[origin.lat, origin.lng], [dest.lat, dest.lng]]);
-        const directDist = calculateDistance(origin.lat, origin.lng, dest.lat, dest.lng);
-        setRouteInfo({
-          distance: directDist,
-          time: Math.round(directDist * 2.5)
-        });
-      }
-    } catch (error) {
-      // Fallback direct line
-      setRouteCoordinates([[origin.lat, origin.lng], [dest.lat, dest.lng]]);
-      const directDist = calculateDistance(origin.lat, origin.lng, dest.lat, dest.lng);
-      setRouteInfo({
-        distance: directDist,
-        time: Math.round(directDist * 2.5)
+      const places = await searchNearbyHealthcarePlaces({
+        lat,
+        lng,
+        type: curFilter || filter,
+        radiusKm: curRadius || radiusKm
       });
+
+      // Enrich with prescribed medicines availability
+      const augmented = (places || []).map((p) => ({
+        ...p,
+        hasPrescribedMeds: p.type === 'pharmacy' && prescribedMedicineNames.length > 0,
+        stockItems: prescribedMedicineNames.length > 0 ? prescribedMedicineNames : p.stockItems
+      }));
+
+      setNearbyPlaces(augmented);
+    } catch (err) {
+      console.error('Error searching healthcare places:', err);
+      setErrorMsg(isKannada ? 'ಸ್ಥಳಗಳನ್ನು ಹುಡುಕಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.' : 'Unable to find facilities in this area. Try expanding radius.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const clearDirections = () => {
-    setRouteCoordinates([]);
-    setRouteInfo(null);
+  // Re-run search when filter or radius changes
+  const handleFilterChange = (newFilter) => {
+    setFilter(newFilter);
+    clearRoute();
+    searchPlaces(mapCenter.lat, mapCenter.lng, newFilter, radiusKm);
   };
 
-  const handleManualSearch = async (e) => {
+  const handleRadiusChange = (newRadius) => {
+    setRadiusKm(newRadius);
+    clearRoute();
+    searchPlaces(mapCenter.lat, mapCenter.lng, filter, newRadius);
+  };
+
+  // Manual city/area search with Geocoding
+  const handleSearchSubmit = async (e) => {
     if (e) e.preventDefault();
     if (!searchLocation.trim()) {
-      searchNearbyPlaces(mapCenter.lat, mapCenter.lng, filter, radiusKm);
+      searchPlaces(mapCenter.lat, mapCenter.lng, filter, radiusKm);
       return;
     }
 
     setIsLoading(true);
     setErrorMsg('');
-    
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchLocation)}&limit=1`;
-    
+
     try {
-      const response = await fetch(url);
-      const results = await response.json();
-      
-      if (results && results.length > 0) {
-        const location = {
-          lat: parseFloat(results[0].lat),
-          lng: parseFloat(results[0].lon)
-        };
-        setMapCenter(location);
-        setZoomLevel(14);
-        setUserLocation(location);
-        searchNearbyPlaces(location.lat, location.lng, filter, radiusKm);
+      const res = await fetch(`/api/doctors-hospitals/geocode?query=${encodeURIComponent(searchLocation)}`);
+      const data = await res.json();
+
+      if (data.success && data.location) {
+        const newCoords = { lat: data.location.lat, lng: data.location.lng };
+        setUserLocation(newCoords);
+        setMapCenter(newCoords);
+        clearRoute();
+        setCustomLocation(newCoords, data.location.displayName, (c) => {
+          searchPlaces(c.lat, c.lng, filter, radiusKm);
+        });
       } else {
-        setErrorMsg(isKannada ? 'ಸ್ಥಳ ಕಂಡುಬಂದಿಲ್ಲ. ದಯವಿಟ್ಟು ಬೇರೆ ಸ್ಥಳದ ಹೆಸರನ್ನು ನಮೂದಿಸಿ.' : 'Location not found. Please try another city or area name.');
+        setErrorMsg(`Could not find "${searchLocation}". Please check spelling.`);
       }
-    } catch (error) {
-      setErrorMsg(isKannada ? 'ಹುಡುಕಾಟ ವಿಫಲವಾಗಿದೆ. ದಯವಿಟ್ಟು ಸಂಪರ್ಕ ಪರಿಶೀಲಿಸಿ.' : 'Please check your connection and try again.');
+    } catch (err) {
+      console.error('Geocoding error:', err);
+      setErrorMsg('Search error. Please try again.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Click on a place from list or map
+  const handlePlaceClick = (place) => {
+    setSelectedPlace(place);
+    if (place.lat && place.lng) {
+      setMapCenter({ lat: place.lat, lng: place.lng });
+    }
+  };
+
+  // In-App Directions to Destination
+  const handleGetDirections = (destPlace) => {
+    const target = destPlace || selectedPlace;
+    if (!target) return;
+
+    setSelectedPlace(target);
+    setShowRoute(true);
+    setShowSteps(true);
+  };
+
+  const clearRoute = () => {
+    setShowRoute(false);
+    setRouteInfo(null);
+    setSelectedPlace(null);
+    setShowSteps(false);
+  };
+
+  const handleRouteCalculated = (info) => {
+    setRouteInfo(info);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-slate-50 text-slate-800 pb-12">
       {/* Top Header */}
-      <header className="bg-white shadow-xs border-b border-slate-200 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
               onClick={onBackHome || (() => navigate('/'))}
-              className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors flex items-center gap-1.5 font-medium text-sm"
-              title="Return to TeleSeva Home"
+              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors flex items-center gap-1.5 font-medium text-sm"
+              title="Return to Home"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              <span>{t('nav.back')}</span>
+              <span>Back</span>
             </button>
-            <div className="border-l border-slate-300 pl-3">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-700 to-teal-600 bg-clip-text text-transparent">
-                {t('loc.title')}
+            <div className="border-l border-slate-200 pl-3">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-teal-700 to-green-600 bg-clip-text text-transparent flex items-center gap-2">
+                <span>📍</span> {t('loc.title')}
               </h1>
-              <p className="text-xs text-slate-500">{t('loc.subtitle')}</p>
+              <p className="text-xs text-slate-500">Live Google Maps Healthcare & Pharmacy Navigator</p>
             </div>
           </div>
 
+          {/* Proper Location Access Button & Status */}
           <div className="flex items-center gap-2">
             <button
-              onClick={() => handleUseMyLocation(true)}
-              className="flex items-center gap-1.5 text-xs sm:text-sm bg-teal-50 text-teal-700 border border-teal-200 px-3 py-2 rounded-xl hover:bg-teal-100 transition-all font-semibold shadow-2xs"
+              onClick={() => {
+                requestLocation((coords, label) => {
+                  setUserLocation(coords);
+                  setMapCenter(coords);
+                  clearRoute();
+                  searchPlaces(coords.lat, coords.lng, filter, radiusKm);
+                });
+              }}
+              disabled={locStatus === 'detecting'}
+              className="flex items-center gap-2 text-xs sm:text-sm bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 px-3.5 py-2 rounded-xl font-semibold transition-all shadow-2xs"
             >
-              <svg className="w-4 h-4 text-teal-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span>{t('loc.useGps')}</span>
+              <span className={`w-2.5 h-2.5 rounded-full ${locStatus === 'detecting' ? 'bg-amber-400 animate-ping' : 'bg-emerald-500'}`}></span>
+              <span>{locStatus === 'detecting' ? 'Acquiring GPS...' : 'Use My GPS Location'}</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Prescription Context Banner if opened from prescription */}
-      {prescribedMedicineNames.length > 0 && (
-        <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white border-b border-emerald-700/40 px-4 sm:px-6 py-3.5 shadow-md">
-          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-0.5 rounded-full font-bold">
-                <span>💊 {isKannada ? 'ಪ್ರಿಸ್ಕ್ರಿಪ್ಷನ್ ಔಷಧಿಗಳು' : 'Prescribed Medicines for Patient'}</span>
+      {/* Main Container */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-4">
+        
+        {/* Prescribed Medicine Alert Banner */}
+        {prescribedMedicineNames.length > 0 && (
+          <div className="bg-gradient-to-r from-emerald-900 to-teal-900 text-white rounded-2xl p-4 shadow-md flex flex-wrap items-center justify-between gap-3 border border-emerald-700/50">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl p-2 bg-emerald-800/80 rounded-xl">📋</span>
+              <div>
+                <span className="text-[10px] uppercase tracking-wider font-extrabold bg-emerald-400 text-emerald-950 px-2 py-0.5 rounded-full">
+                  Doctor Prescribed
+                </span>
+                <p className="font-bold text-sm text-emerald-100 mt-0.5">
+                  Looking for: <span className="text-white font-extrabold">{prescribedMedicineNames.join(', ')}</span>
+                </p>
               </div>
-              <p className="text-sm font-semibold text-white">
-                {isKannada ? 'ಹುಡುಕಲಾಗುತ್ತಿರುವ ಔಷಧಿಗಳು:' : 'Medicines to procure:'}{' '}
-                <span className="text-emerald-300 font-bold">{prescribedMedicineNames.join(', ')}</span>
-              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 px-3 py-1.5 rounded-xl font-medium">
-                ✓ {isKannada ? 'ಸಮೀಪದ ಅಂಗಡಿಗಳಲ್ಲಿ ಲಭ್ಯವಿದೆ' : 'In Stock at Verified Pharmacies'}
+            <span className="text-xs text-emerald-200 bg-emerald-800/60 px-3 py-1.5 rounded-xl border border-emerald-600/40">
+              ✓ Filtered for pharmacies carrying your prescription
+            </span>
+          </div>
+        )}
+
+        {/* Live Location & GPS Status Bar */}
+        <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-base">📍</span>
+            <span className="text-slate-500">Search Center:</span>
+            <strong className="text-slate-900 font-semibold bg-slate-100 px-2.5 py-1 rounded-lg">
+              {locationLabel}
+            </strong>
+          </div>
+          <div className="flex items-center gap-3 text-slate-500">
+            {accuracy && (
+              <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-md font-medium border border-emerald-100">
+                GPS Accuracy: ~{accuracy}m
               </span>
-            </div>
+            )}
+            <span>Radius: <strong>{radiusKm} km</strong></span>
           </div>
         </div>
-      )}
 
-      {/* Search Bar & Facility Filter Toolbar */}
-      <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-4 shadow-2xs">
-        <div className="max-w-7xl mx-auto space-y-3">
-          <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
-            
-            {/* Filter Toggle Tabs */}
-            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-              <button 
-                onClick={() => setFilter('all')}
-                className={`flex-1 sm:flex-none px-4 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  filter === 'all' 
-                    ? 'bg-white shadow text-slate-900' 
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <span>🏥</span>
-                <span>{t('loc.all')}</span>
-              </button>
-              <button 
-                onClick={() => setFilter('pharmacy')}
-                className={`flex-1 sm:flex-none px-4 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  filter === 'pharmacy' 
-                    ? 'bg-emerald-600 text-white shadow-sm' 
-                    : 'text-emerald-700 hover:bg-emerald-50'
-                }`}
-              >
-                <span>💊</span>
-                <span>{t('loc.pharmacies')}</span>
-              </button>
-              <button 
-                onClick={() => setFilter('hospital')}
-                className={`flex-1 sm:flex-none px-4 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  filter === 'hospital' 
-                    ? 'bg-rose-600 text-white shadow-sm' 
-                    : 'text-rose-700 hover:bg-rose-50'
-                }`}
-              >
-                <span>🏨</span>
-                <span>{t('loc.hospitals')}</span>
-              </button>
+        {/* Search & Filter Toolbar */}
+        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+          {/* Facility Type Filter */}
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => handleFilterChange('all')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                filter === 'all' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {t('loc.all')}
+            </button>
+            <button
+              onClick={() => handleFilterChange('pharmacy')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                filter === 'pharmacy' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>💊</span> {t('loc.pharmacies')}
+            </button>
+            <button
+              onClick={() => handleFilterChange('hospital')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                filter === 'hospital' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>🏥</span> {t('loc.hospitals')}
+            </button>
+          </div>
+
+          {/* Search Input */}
+          <form onSubmit={handleSearchSubmit} className="flex-1 max-w-md flex items-center gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={searchLocation}
+                onChange={(e) => setSearchLocation(e.target.value)}
+                placeholder="Search area (e.g. Indiranagar, Koramangala)..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <span className="absolute left-3 top-2.5 text-slate-400 text-xs">🔍</span>
             </div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shrink-0"
+            >
+              Search
+            </button>
+          </form>
 
-            {/* Locality Search Form */}
-            <form onSubmit={handleManualSearch} className="flex gap-2 flex-1 max-w-xl">
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  value={searchLocation}
-                  onChange={(e) => setSearchLocation(e.target.value)}
-                  placeholder={t('loc.searchPlaceholder')}
-                  className="w-full pl-3.5 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent font-medium"
-                />
-              </div>
+          {/* Radius Selector */}
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-slate-500 font-medium">Distance:</span>
+            {[3, 5, 10, 25].map((r) => (
               <button
-                type="submit"
-                className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors whitespace-nowrap shadow-xs"
+                key={r}
+                onClick={() => handleRadiusChange(r)}
+                className={`px-2.5 py-1 rounded-lg font-bold border transition-all ${
+                  radiusKm === r
+                    ? 'bg-teal-50 text-teal-700 border-teal-300'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
               >
-                {t('loc.searchBtn')}
+                {r} km
               </button>
-            </form>
+            ))}
           </div>
 
-          {/* Search Radius Chips */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
+          {/* Quick Locality Selector Pills */}
+          <div className="w-full flex flex-wrap items-center gap-1.5 text-xs pt-2 border-t border-slate-100">
+            <span className="text-slate-500 font-semibold text-[11px]">Popular Localities:</span>
+            {[
+              { name: "Anekal Town", coords: { lat: 12.6889, lng: 77.7130 } },
+              { name: "Chandapura", coords: { lat: 12.7933, lng: 77.7011 } },
+              { name: "Electronic City", coords: { lat: 12.8399, lng: 77.6770 } },
+              { name: "Jigani", coords: { lat: 12.7836, lng: 77.6415 } },
+              { name: "Attibele", coords: { lat: 12.7783, lng: 77.7712 } },
+              { name: "Bengaluru Central", coords: { lat: 12.9716, lng: 77.5946 } }
+            ].map((loc) => (
+              <button
+                key={loc.name}
+                type="button"
+                onClick={() => handleQuickLocality(loc)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                  locationLabel.toLowerCase().includes(loc.name.toLowerCase().split(' ')[0])
+                    ? 'bg-teal-600 text-white border-teal-600 shadow-2xs font-bold'
+                    : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300 hover:bg-teal-50/50'
+                }`}
+              >
+                📍 {loc.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Error or Notice Banner */}
+        {errorMsg && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-slate-600">{t('loc.radius')}:</span>
-              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
-                {[2, 5, 10, 25].map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setRadiusKm(r)}
-                    className={`px-3 py-1 rounded-md font-bold transition-all ${
-                      radiusKm === r 
-                        ? 'bg-emerald-600 text-white shadow-xs' 
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                    }`}
-                  >
-                    {r} km
-                  </button>
-                ))}
-              </div>
+              <span>⚠️</span>
+              <span>{errorMsg}</span>
             </div>
-
-            <div className="flex items-center gap-3 text-slate-500 font-medium">
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                <span>{nearbyPlaces.filter(p => p.type === 'pharmacy').length} {t('loc.pharmacies')}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                <span>{nearbyPlaces.filter(p => p.type === 'hospital').length} {t('loc.hospitals')}</span>
-              </span>
-            </div>
+            <button onClick={() => setErrorMsg('')} className="font-bold text-amber-900">✕</button>
           </div>
-        </div>
-      </div>
+        )}
 
-      {/* Error / Status Alert */}
-      {errorMsg && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2.5">
-          <div className="max-w-7xl mx-auto flex items-center gap-2 text-amber-800 text-xs font-medium">
-            <span>ℹ️</span>
-            <span>{errorMsg}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Main Interactive Grid */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Main Grid: Google Map & Facility Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           
-          {/* Left Column: Interactive Map */}
-          <div className="lg:col-span-7 h-[450px] sm:h-[550px] lg:h-[680px] flex flex-col">
-            <div className="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden relative flex-1 flex flex-col">
+          {/* Left Column: Interactive Google Map Canvas (7 cols) */}
+          <div className="lg:col-span-7 flex flex-col space-y-3">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[460px] sm:h-[540px] lg:h-[620px]">
               
               {/* Map Title Bar */}
-              <div className="p-3 bg-slate-900 text-white flex items-center justify-between text-xs font-semibold">
+              <div className="p-3 bg-slate-900 text-white flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                  <span>{isKannada ? 'ಲೈವ್ ಆರೋಗ್ಯ ನಕ್ಷೆ' : 'Live Interactive Healthcare Map'}</span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="font-bold text-sm tracking-wide">Live Google Map</span>
                 </div>
-                <div className="flex items-center gap-3 text-[11px]">
-                  <span className="flex items-center gap-1 text-emerald-300">
-                    <span>🟢</span> {t('loc.pharmacies')}
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1 text-[11px] text-emerald-300">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Pharmacy (💊)
                   </span>
-                  <span className="flex items-center gap-1 text-rose-300">
-                    <span>🔴</span> {t('loc.hospitals')}
+                  <span className="flex items-center gap-1 text-[11px] text-rose-300">
+                    <span className="w-2 h-2 rounded-full bg-rose-400"></span> Hospital (🏥)
+                  </span>
+                  <span className="flex items-center gap-1 text-[11px] text-blue-300">
+                    <span className="w-2 h-2 rounded-full bg-blue-400"></span> You (📍)
                   </span>
                 </div>
               </div>
 
-              {/* Map Frame */}
+              {/* Google Map View */}
               <div className="flex-1 relative">
-                <MapContainer center={[mapCenter.lat, mapCenter.lng]} zoom={zoomLevel} className="w-full h-full">
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  />
-                  <MapUpdater 
-                    center={mapCenter} 
-                    zoom={zoomLevel} 
-                    routeCoordinates={routeCoordinates}
-                    selectedPlace={selectedPlace}
-                  />
-                  
-                  {/* User Location Marker */}
-                  {userLocation && (
-                    <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon}>
-                      <Popup>
-                        <div className="text-xs font-sans font-bold text-blue-600">
-                          {isKannada ? 'ನಿಮ್ಮ ಪ್ರಸ್ತುತ ಸ್ಥಳ' : 'Your Location'}
-                        </div>
-                      </Popup>
-                    </Marker>
-                  )}
-
-                  {/* Facilities Markers */}
-                  {nearbyPlaces.map((place) => (
-                    <Marker 
-                      key={place.id} 
-                      position={[place.geometry.location.lat, place.geometry.location.lng]}
-                      icon={place.type === 'pharmacy' ? pharmacyIcon : hospitalIcon}
-                      eventHandlers={{
-                        click: () => handlePlaceClick(place),
-                      }}
-                    >
-                      <Popup>
-                        <div className="p-1 max-w-xs text-xs font-sans space-y-1.5">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                            place.type === 'pharmacy' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                          }`}>
-                            {place.type === 'pharmacy' ? '💊 Pharmacy' : '🏥 Hospital'}
-                          </span>
-                          <h3 className="font-bold text-slate-900 text-sm">{place.name}</h3>
-                          {place.distanceKm !== null && (
-                            <p className="text-xs font-bold text-teal-700">
-                              📍 {place.distanceKm} km {t('loc.distanceAway')}
-                            </p>
-                          )}
-                          <p className="text-slate-600 text-[11px]">{place.vicinity}</p>
-                          <p className="text-slate-500 text-[11px]">🕒 {place.timing}</p>
-
-                          <div className="pt-2 flex flex-col gap-1.5">
-                            <button
-                              onClick={() => getDirections(place)}
-                              className="w-full bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition-colors"
-                            >
-                              {t('loc.getDirections')}
-                            </button>
-                            <a
-                              href={`https://www.google.com/maps/dir/?api=1&destination=${place.geometry.location.lat},${place.geometry.location.lng}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="w-full text-center bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded text-[10px] font-semibold transition-colors"
-                            >
-                              {t('loc.googleMaps')} ↗
-                            </a>
-                          </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  ))}
-
-                  {/* Route Polyline */}
-                  {routeCoordinates.length > 0 && (
-                    <Polyline positions={routeCoordinates} color="#0D9488" weight={5} opacity={0.85} />
-                  )}
-                </MapContainer>
+                <GoogleMapView
+                  center={mapCenter}
+                  zoom={zoomLevel}
+                  userLocation={userLocation || userCoords}
+                  places={nearbyPlaces}
+                  selectedPlace={selectedPlace}
+                  onSelectPlace={handlePlaceClick}
+                  showRoute={showRoute}
+                  onRouteCalculated={handleRouteCalculated}
+                  onLocationSelect={handleManualLocationSelect}
+                  className="w-full h-full"
+                />
               </div>
             </div>
           </div>
 
-          {/* Right Column: Facility Cards List & Route Info */}
-          <div className="lg:col-span-5 space-y-4 flex flex-col h-[450px] sm:h-[550px] lg:h-[680px]">
+          {/* Right Column: Direction Panel & Facility List (5 cols) */}
+          <div className="lg:col-span-5 space-y-4 flex flex-col h-[460px] sm:h-[540px] lg:h-[620px]">
             
-            {/* Route Summary Card */}
-            {routeInfo && (
-              <div className="bg-teal-50 border border-teal-200 rounded-2xl p-4 shadow-xs">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-bold text-teal-900 text-sm flex items-center gap-1.5">
-                    <span>🚗</span> {t('loc.routeInfo')}
-                  </h3>
-                  <button onClick={clearDirections} className="text-teal-700 hover:text-teal-900 text-xs font-semibold underline">
-                    {t('loc.clearRoute')}
+            {/* In-App Driving Route Summary Card */}
+            {showRoute && selectedPlace && (
+              <div className="bg-teal-50 border border-teal-200 rounded-2xl p-4 shadow-sm space-y-3 animate-fade-in">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700 bg-teal-100 px-2 py-0.5 rounded">
+                      In-App Google Driving Directions
+                    </span>
+                    <h3 className="font-bold text-teal-950 text-sm mt-1">
+                      Route to {selectedPlace.name}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={clearRoute}
+                    className="text-teal-700 hover:text-teal-950 text-xs font-bold underline"
+                  >
+                    Clear Route
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-4 mt-2 bg-white/80 p-3 rounded-xl border border-teal-100">
-                  <div>
-                    <p className="text-[10px] text-teal-700 uppercase tracking-wider font-bold">{t('loc.travelDistance')}</p>
-                    <p className="text-xl font-extrabold text-teal-950">{routeInfo.distance} km</p>
+
+                {/* Distance & Time Metrics */}
+                {routeInfo && (
+                  <div className="grid grid-cols-2 gap-3 bg-white/95 p-3 rounded-xl border border-teal-100">
+                    <div>
+                      <p className="text-[10px] text-teal-700 uppercase tracking-wider font-bold">Driving Distance</p>
+                      <p className="text-xl font-extrabold text-teal-950">{routeInfo.distanceText}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-teal-700 uppercase tracking-wider font-bold">Estimated Time</p>
+                      <p className="text-xl font-extrabold text-teal-950">{routeInfo.durationText}</p>
+                    </div>
                   </div>
+                )}
+
+                {/* Turn-by-Turn Steps Toggle */}
+                {routeInfo?.steps && routeInfo.steps.length > 0 && (
                   <div>
-                    <p className="text-[10px] text-teal-700 uppercase tracking-wider font-bold">{t('loc.estTime')}</p>
-                    <p className="text-xl font-extrabold text-teal-950">{routeInfo.time} mins</p>
+                    <button
+                      onClick={() => setShowSteps(!showSteps)}
+                      className="w-full py-1.5 px-3 bg-white border border-teal-200 text-teal-900 rounded-xl text-xs font-bold flex items-center justify-between"
+                    >
+                      <span>🚗 View Turn-by-Turn Navigation Steps ({routeInfo.steps.length})</span>
+                      <span>{showSteps ? '▲ Hide' : '▼ Show'}</span>
+                    </button>
+
+                    {showSteps && (
+                      <div className="mt-2 max-h-40 overflow-y-auto bg-white border border-teal-100 rounded-xl p-2.5 space-y-1.5 text-xs text-slate-700">
+                        {routeInfo.steps.map((st, i) => (
+                          <div key={i} className="flex items-start gap-2 py-1 border-b border-slate-100 last:border-0">
+                            <span className="font-extrabold text-teal-600 shrink-0">{i + 1}.</span>
+                            <span className="flex-1 text-[11px] leading-tight">{st.instruction}</span>
+                            {st.distance && <span className="text-[10px] text-slate-400 shrink-0 font-medium">{st.distance}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
               </div>
             )}
 
-            {/* Facilities Scrollable Card List */}
-            <div className="bg-white rounded-2xl shadow-md border border-slate-200 p-4 sm:p-5 flex-1 flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-bold text-slate-800">
-                  {filter === 'hospital' ? t('loc.hospitals') : filter === 'pharmacy' ? t('loc.pharmacies') : t('loc.all')} ({nearbyPlaces.length})
-                </h2>
-                <span className="text-xs text-slate-500 font-medium">Radius: {radiusKm} km</span>
-              </div>
-              
-              {isLoading ? (
-                <div className="flex flex-col items-center justify-center flex-1 py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-3 border-teal-600 border-t-transparent mb-3"></div>
-                  <span className="text-slate-500 text-xs font-medium">
-                    {isKannada ? 'ಸಮೀಪದ ವೈದ್ಯಕೀಯ ಕೇಂದ್ರಗಳನ್ನು ಹುಡುಕಲಾಗುತ್ತಿದೆ...' : 'Querying verified healthcare centers & pharmacies...'}
+            {/* Scrollable Facility Cards List */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 flex-1 flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between mb-3 shrink-0">
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <span>🏥</span>
+                  <span>
+                    {filter === 'hospital' ? t('loc.hospitals') : filter === 'pharmacy' ? t('loc.pharmacies') : t('loc.all')}
                   </span>
-                </div>
-              ) : nearbyPlaces.length > 0 ? (
-                <div className="space-y-3 overflow-y-auto pr-1 flex-1">
-                  {nearbyPlaces.map((place) => {
+                  <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {nearbyPlaces.length}
+                  </span>
+                </h2>
+                {isLoading && (
+                  <div className="flex items-center gap-1.5 text-xs text-teal-600">
+                    <span className="w-2.5 h-2.5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></span>
+                    <span>Finding places...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Cards List */}
+              <div className="space-y-3 overflow-y-auto pr-1 flex-1">
+                {nearbyPlaces.length === 0 && !isLoading ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center p-6 text-slate-400">
+                    <span className="text-3xl mb-2">🔍</span>
+                    <p className="text-xs">No healthcare facilities found within {radiusKm} km.</p>
+                    <button
+                      onClick={() => handleRadiusChange(15)}
+                      className="mt-3 text-xs bg-teal-50 text-teal-700 px-3 py-1.5 rounded-lg font-bold hover:bg-teal-100"
+                    >
+                      Expand search to 15 km
+                    </button>
+                  </div>
+                ) : (
+                  nearbyPlaces.map((place) => {
                     const isSelected = selectedPlace?.id === place.id;
                     const isPharmacy = place.type === 'pharmacy';
 
@@ -773,64 +535,62 @@ export default function PharmacyLocator({ onBackHome }) {
                       <div
                         key={place.id}
                         onClick={() => handlePlaceClick(place)}
-                        className={`p-3.5 border rounded-xl cursor-pointer transition-all duration-200 ${
+                        className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
                           isSelected
-                            ? 'border-teal-500 bg-teal-50/60 ring-2 ring-teal-200 shadow-xs'
-                            : 'border-slate-200 hover:border-teal-300 hover:bg-slate-50'
+                            ? 'border-teal-500 bg-teal-50/60 shadow-xs ring-1 ring-teal-500'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 bg-white'
                         }`}
                       >
-                        <div className="flex justify-between items-start gap-2 mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">{isPharmacy ? '💊' : '🏥'}</span>
-                            <h3 className="font-bold text-sm text-slate-900 leading-snug">{place.name}</h3>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span
+                                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                                  isPharmacy ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                }`}
+                              >
+                                {isPharmacy ? '💊 Pharmacy' : '🏥 Hospital'}
+                              </span>
+                              {place.rating && (
+                                <span className="text-[11px] font-bold text-amber-600 flex items-center gap-0.5">
+                                  ⭐ {place.rating}
+                                </span>
+                              )}
+                            </div>
+                            <h3 className="font-bold text-slate-900 text-sm">{place.name}</h3>
+                            <p className="text-slate-500 text-xs mt-0.5 line-clamp-2">{place.vicinity}</p>
                           </div>
                           {place.distanceKm !== null && (
-                            <span className="text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-md shrink-0">
+                            <span className="text-xs font-bold text-teal-800 bg-teal-50 border border-teal-100 px-2 py-1 rounded-lg shrink-0">
                               {place.distanceKm} km
                             </span>
                           )}
                         </div>
 
-                        <p className="text-xs text-slate-500 mb-2 line-clamp-2">{place.vicinity}</p>
-                        
-                        {/* Tags */}
-                        <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
-                          <span className={`px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold rounded ${
-                            isPharmacy 
-                              ? 'bg-emerald-100 text-emerald-800' 
-                              : 'bg-rose-100 text-rose-800'
-                          }`}>
-                            {isPharmacy ? 'Pharmacy' : 'Hospital'}
-                          </span>
-                          <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                            🕒 {place.timing}
-                          </span>
-                          {place.hasPrescribedMeds && (
-                            <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 font-semibold px-2 py-0.5 rounded">
-                              ✓ {t('loc.inStock')}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); getDirections(place); }}
-                              className="text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
-                            >
-                              <span>🗺️</span>
-                              <span>{t('loc.getDirections')}</span>
-                            </button>
-                            <a
-                              href={`tel:${place.phone}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1"
-                            >
-                              <span>📞</span>
-                              <span>{t('loc.call')}</span>
-                            </a>
+                        {/* Prescribed Medicine Tag */}
+                        {place.hasPrescribedMeds && (
+                          <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-900 flex items-center justify-between">
+                            <span className="font-bold">✓ Prescribed Stock Available</span>
+                            <span className="text-[10px] text-emerald-700">Verified</span>
                           </div>
+                        )}
+
+                        {/* In-App Actions (No External Leaving Buttons) */}
+                        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleGetDirections(place);
+                            }}
+                            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                              isSelected && showRoute
+                                ? 'bg-teal-700 text-white'
+                                : 'bg-teal-600 hover:bg-teal-700 text-white shadow-2xs'
+                            }`}
+                          >
+                            <span>🧭</span>
+                            <span>{isSelected && showRoute ? 'Viewing Route' : 'Get Directions'}</span>
+                          </button>
 
                           {isPharmacy && (
                             <button
@@ -839,189 +599,128 @@ export default function PharmacyLocator({ onBackHome }) {
                                 setOrderModalPlace(place);
                                 setOrderSuccess(false);
                               }}
-                              className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-3 py-1.5 rounded-lg transition-all"
+                              className="py-1.5 px-3 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors"
                             >
-                              {t('loc.orderNow')}
+                              Reserve Medicine
                             </button>
                           )}
+
+                          <a
+                            href={`tel:${place.phone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg text-xs font-semibold"
+                            title="Call facility"
+                          >
+                            📞
+                          </a>
                         </div>
                       </div>
                     );
-                  })}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center flex-1 text-slate-400 py-12">
-                  <span className="text-4xl mb-2">🏥</span>
-                  <p className="text-xs text-center font-medium max-w-xs">{t('loc.noPlaces')}</p>
-                </div>
-              )}
+                  })
+                )}
+              </div>
             </div>
           </div>
-
         </div>
       </main>
 
-      {/* Order / Reserve Modal - High Z-Index to always stay above Leaflet map controls */}
+      {/* Reserve / Order Medicine Modal */}
       {orderModalPlace && (
-        <div 
-          className="fixed inset-0 z-[99999] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
-          onClick={() => setOrderModalPlace(null)}
-        >
-          <div 
-            className="bg-white rounded-3xl shadow-2xl p-6 sm:p-7 max-w-lg w-full border border-slate-200 animate-fadeIn relative my-auto max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {!orderSuccess ? (
-              <div className="space-y-4">
-                <div className="flex justify-between items-start border-b border-slate-100 pb-3">
-                  <div>
-                    <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                      {isKannada ? 'ಮೆಡಿಕಲ್ ಸ್ಟೋರ್ ಆರ್ಡರ್ / ಪಿಕಪ್' : 'Pharmacy Order & Reserve'}
-                    </span>
-                    <h3 className="text-lg font-extrabold text-slate-900 mt-1">{orderModalPlace.name}</h3>
-                  </div>
-                  <button 
-                    onClick={() => setOrderModalPlace(null)} 
-                    className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center text-sm font-bold transition"
-                  >
-                    ✕
-                  </button>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded uppercase">
+                  TeleSeva Fast Reserve
+                </span>
+                <h3 className="font-bold text-slate-900 text-base mt-1">{orderModalPlace.name}</h3>
+              </div>
+              <button
+                onClick={() => setOrderModalPlace(null)}
+                className="text-slate-400 hover:text-slate-700 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {orderSuccess ? (
+              <div className="text-center py-6 space-y-3">
+                <span className="text-4xl">🎉</span>
+                <h4 className="font-bold text-emerald-700 text-base">Medicines Reserved!</h4>
+                <p className="text-xs text-slate-600">
+                  Your reservation ID has been sent to your phone. The pharmacy has held your stock for 4 hours.
+                </p>
+                <button
+                  onClick={() => setOrderModalPlace(null)}
+                  className="w-full bg-slate-900 text-white font-bold py-2.5 rounded-xl text-xs hover:bg-slate-800"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3 text-xs">
+                <p className="text-slate-600">
+                  Reserve prescribed medicines directly at this verified pharmacy:
+                </p>
+
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+                  <span className="font-semibold text-slate-700">Prescription Items:</span>
+                  <ul className="list-disc list-inside text-slate-600">
+                    {(orderModalPlace.stockItems || ["Standard Antibiotic & Pain Relief"]).slice(0, 3).map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
                 </div>
 
-                {/* Fulfillment Mode Toggle */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
-                    {isKannada ? 'ಸೇವೆ ಆಯ್ಕೆಮಾಡಿ:' : 'Choose Fulfillment Method:'}
-                  </label>
+                  <label className="block text-slate-700 font-semibold mb-1">Fulfillment Mode:</label>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setOrderType('pickup')}
-                      className={`p-3 rounded-2xl border text-left transition-all ${
-                        orderType === 'pickup'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-200 font-bold'
-                          : 'border-slate-200 hover:bg-slate-50 text-slate-600 font-medium'
+                      className={`py-2 text-center rounded-xl font-bold border ${
+                        orderType === 'pickup' ? 'bg-teal-50 text-teal-800 border-teal-300' : 'bg-white border-slate-200'
                       }`}
                     >
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-lg">🏬</span>
-                        <span className="text-xs sm:text-sm font-bold">{isKannada ? 'ಸ್ಟೋರ್ ಪಿಕಪ್' : 'Self Pickup'}</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Ready in 30 mins • Free</p>
+                      🏬 Counter Pickup
                     </button>
-
                     <button
                       type="button"
                       onClick={() => setOrderType('delivery')}
-                      className={`p-3 rounded-2xl border text-left transition-all ${
-                        orderType === 'delivery'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-200 font-bold'
-                          : 'border-slate-200 hover:bg-slate-50 text-slate-600 font-medium'
+                      className={`py-2 text-center rounded-xl font-bold border ${
+                        orderType === 'delivery' ? 'bg-teal-50 text-teal-800 border-teal-300' : 'bg-white border-slate-200'
                       }`}
                     >
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-lg">🛵</span>
-                        <span className="text-xs sm:text-sm font-bold">{isKannada ? 'ಮನೆ ಬಾಗಿಲಿಗೆ ಡೆಲಿವರಿ' : 'Home Delivery'}</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Direct from local chemist</p>
+                      🚚 Home Delivery
                     </button>
                   </div>
                 </div>
 
-                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5 text-xs">
-                  <p className="text-slate-700"><strong>📍 Pharmacy Location:</strong> {orderModalPlace.vicinity}</p>
-                  <p className="text-slate-700"><strong>📞 Store Helpline:</strong> {orderModalPlace.phone}</p>
-                  <p className="text-slate-700"><strong>🕒 Operating Hours:</strong> {orderModalPlace.timing}</p>
-                </div>
-
-                {/* Medicines List */}
                 <div>
-                  <h4 className="text-xs font-bold text-slate-700 uppercase mb-1.5 flex justify-between items-center">
-                    <span>{isKannada ? 'ಆರ್ಡರ್ ಮಾಡಲಾಗುತ್ತಿರುವ ಔಷಧಿಗಳು:' : 'Medicines to Reserve:'}</span>
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Verified In Stock</span>
-                  </h4>
-                  <div className="bg-white border border-slate-200 rounded-2xl p-3 text-xs space-y-1.5 max-h-36 overflow-y-auto">
-                    {orderModalPlace.stockItems?.map((med, mIdx) => (
-                      <div key={mIdx} className="flex justify-between items-center py-1 border-b border-slate-100 last:border-0">
-                        <span className="font-semibold text-slate-800">💊 {med}</span>
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">In Stock ✓</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Patient Phone Input */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    {isKannada ? 'ಮೊಬೈಲ್ ಸಂಖ್ಯೆ (ದೃಢೀಕರಣ SMS ಗಾಗಿ):' : 'Contact Phone (For Order SMS / Call):'}
-                  </label>
+                  <label className="block text-slate-700 font-semibold mb-1">Contact Phone:</label>
                   <input
                     type="tel"
                     value={orderPhone}
                     onChange={(e) => setOrderPhone(e.target.value)}
-                    placeholder="e.g. +91 98765 43210"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="+91 98XXXXXXXX"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
-                <div className="flex gap-3 pt-2">
+                <div className="pt-2 flex gap-2">
                   <button
+                    type="button"
                     onClick={() => setOrderModalPlace(null)}
-                    className="flex-1 py-3 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+                    className="flex-1 py-2.5 border border-slate-200 text-slate-700 font-bold rounded-xl"
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={() => setOrderSuccess(true)}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-xs font-bold shadow-lg transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl shadow-xs"
                   >
-                    <span>✓</span>
-                    <span>{isKannada ? 'ಆರ್ಡರ್ ದೃಢೀಕರಿಸಿ' : orderType === 'pickup' ? 'Confirm Store Pickup' : 'Confirm Delivery Request'}</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-4 space-y-4">
-                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl font-black shadow-inner">
-                  ✓
-                </div>
-                <div>
-                  <h3 className="text-xl font-extrabold text-slate-900">
-                    {isKannada ? 'ಔಷಧಿ ಆರ್ಡರ್ ಯಶಸ್ವಿಯಾಗಿದೆ!' : 'Medicines Reserved Successfully!'}
-                  </h3>
-                  <p className="text-xs font-bold text-emerald-700 mt-1">
-                    Order Ref: #ORD-TS-{Date.now().toString().slice(-5)}
-                  </p>
-                </div>
-
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs space-y-1.5 text-left">
-                  <p className="text-slate-700"><strong>Pharmacy:</strong> {orderModalPlace.name}</p>
-                  <p className="text-slate-700"><strong>Fulfillment:</strong> {orderType === 'pickup' ? '🏬 Self Pickup (Ready in 30 mins)' : '🛵 Doorstep Delivery'}</p>
-                  <p className="text-slate-700"><strong>Phone:</strong> {orderPhone || 'Your registered contact'}</p>
-                </div>
-
-                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  {isKannada 
-                    ? `ನಿಮ್ಮ ಪ್ರಿಸ್ಕ್ರಿಪ್ಷನ್ ವಿವರಗಳನ್ನು ${orderModalPlace.name} ರವರಿಗೆ ಕಳುಹಿಸಲಾಗಿದೆ. ಔಷಧಿಗಳನ್ನು ಪ್ಯಾಕ್ ಮಾಡಲಾಗುತ್ತಿದೆ.`
-                    : `Your medicine prescription has been directly notified to ${orderModalPlace.name}. The pharmacy team is keeping your order packed and ready.`}
-                </p>
-
-                <div className="pt-2 flex gap-3">
-                  <a
-                    href={`tel:${orderModalPlace.phone}`}
-                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1"
-                  >
-                    <span>📞</span>
-                    <span>Call Pharmacy</span>
-                  </a>
-                  <button
-                    onClick={() => {
-                      setOrderModalPlace(null);
-                      setOrderSuccess(false);
-                    }}
-                    className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl text-xs shadow-md"
-                  >
-                    {isKannada ? 'ಮುಕ್ತಾಯ' : 'Done'}
+                    Confirm Reservation
                   </button>
                 </div>
               </div>

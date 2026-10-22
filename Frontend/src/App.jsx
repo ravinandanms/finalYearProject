@@ -91,22 +91,22 @@ export default function App() {
           </ProtectedRoute>
         } />
         <Route path="/doctor-finder" element={
-          <ProtectedRoute allowedRoles={['patient']}>
+          <ProtectedRoute allowedRoles={['patient', 'doctor', 'admin']}>
             <DoctorHospitalFinder onBackHome={() => window.history.back()} />
           </ProtectedRoute>
         } />
         <Route path="/ai-symptom-checker" element={
-          <ProtectedRoute allowedRoles={['patient']}>
+          <ProtectedRoute allowedRoles={['patient', 'doctor', 'admin']}>
             <AISymptomChecker onBackHome={() => window.history.back()} />
           </ProtectedRoute>
         } />
         <Route path="/diet-planner" element={
-          <ProtectedRoute allowedRoles={['patient']}>
+          <ProtectedRoute allowedRoles={['patient', 'doctor', 'admin']}>
             <DietPlanner onBackHome={() => window.history.back()} />
           </ProtectedRoute>
         } />
         <Route path="/pharmacy-locator" element={
-          <ProtectedRoute allowedRoles={['patient']}>
+          <ProtectedRoute allowedRoles={['patient', 'doctor', 'admin']}>
             <PharmacyLocator onBackHome={() => window.history.back()} />
           </ProtectedRoute>
         } />
